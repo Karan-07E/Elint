@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./Signup.css";
 
 function Signup() {
   const navigate = useNavigate();
@@ -38,20 +37,54 @@ function Signup() {
   };
 
   return (
-    <div className="signup-container">
-      <h2>Create Account</h2>
-      <form onSubmit={handleSubmit}>
-        <input type="text" name="name" placeholder="Name" onChange={handleChange} required />
-        <input type="email" name="email" placeholder="Email" onChange={handleChange} required />
-        <input type="password" name="password" placeholder="Password" onChange={handleChange} required />
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center px-4">
+      <form onSubmit={handleSubmit} className="bg-white p-10 rounded-2xl shadow-lg w-full max-w-md space-y-5">
+        <h2 className="text-3xl font-bold text-gray-800 text-center mb-6">Create Account</h2>
+        
+        <input 
+          type="text" 
+          name="name" 
+          placeholder="Name" 
+          onChange={handleChange} 
+          required 
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+        />
+        
+        <input 
+          type="email" 
+          name="email" 
+          placeholder="Email" 
+          onChange={handleChange} 
+          required 
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+        />
+        
+        <input 
+          type="password" 
+          name="password" 
+          placeholder="Password" 
+          onChange={handleChange} 
+          required 
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+        />
 
-        <select name="role" onChange={handleChange} value={formData.role}>
+        <select 
+          name="role" 
+          onChange={handleChange} 
+          value={formData.role}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+        >
           <option value="user">User</option>
           <option value="admin">Admin</option>
           <option value="product team">Product Team</option>
         </select>
 
-        <button type="submit">Sign Up</button>
+        <button 
+          type="submit" 
+          className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+        >
+          Sign Up
+        </button>
       </form>
     </div>
   );
