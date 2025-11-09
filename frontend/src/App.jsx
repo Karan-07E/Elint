@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
 import Home from "./pages/Home.jsx";
+import ItemPage from "./pages/item.jsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -52,6 +53,14 @@ function App() {
           path="/signup"
           element={
             isAuthenticated ? <Navigate to="/" replace /> : <Signup />
+          }
+        />
+
+        {/* Items Page */}
+        <Route
+          path="/items"
+          element={
+            isAuthenticated ? <ItemPage /> : <Navigate to="/login" replace />
           }
         />
 

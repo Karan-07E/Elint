@@ -9,6 +9,19 @@ const api = axios.create({
   },
 });
 
+// current user verifier for each request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  console.log('🔄 API Request:', config.method?.toUpperCase(), config.url);
+  return config;
+}, (error) => {
+  console.error('❌ Request error:', error);
+  return Promise.reject(error);
+});
+
 // Dashboard APIs
 export const getDashboardSummary = () => api.get('/dashboard/summary');
 export const getSalesChart = (period = 'month') => api.get(`/dashboard/sales-chart?period=${period}`);

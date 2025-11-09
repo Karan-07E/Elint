@@ -28,11 +28,14 @@ router.get('/:id', async (req, res) => {
 // Create item
 router.post('/', async (req, res) => {
   try {
+    console.log('Received item data:', JSON.stringify(req.body, null, 2));
     const item = new Item(req.body);
     const newItem = await item.save();
+    console.log('Item saved successfully:', newItem._id);
     res.status(201).json(newItem);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error('Error creating item:', error);
+    res.status(400).json({ message: error.message, error: error.toString() });
   }
 });
 

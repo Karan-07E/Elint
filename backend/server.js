@@ -5,7 +5,9 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(express.json());
+// Middleware - increased limit for base64 images
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
 // ✅ MongoDB Connection
@@ -18,7 +20,24 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // ✅ Routes
 const authRoutes = require('./routes/authRoutes');
+const itemRoutes = require('./routes/itemRoutes');
+const partyRoutes = require('./routes/partyRoutes');
+const saleRoutes = require('./routes/saleRoutes');
+const purchaseRoutes = require('./routes/purchaseRoutes');
+const transactionRoutes = require('./routes/transactionRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const userRoutes = require('./routes/userRoutes');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/items', itemRoutes);
+app.use('/api/parties', partyRoutes);
+app.use('/api/sales', saleRoutes);
+app.use('/api/purchases', purchaseRoutes);
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/users', userRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

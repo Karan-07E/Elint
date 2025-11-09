@@ -1,52 +1,115 @@
 const mongoose = require('mongoose');
 
+const processStepSchema = new mongoose.Schema({
+  id: {
+    type: Number,
+    required: true
+  },
+  stepName: {
+    type: String,
+    trim: true
+  },
+  description: {
+    type: String,
+    trim: true
+  },
+  details: {
+    type: String,
+    trim: true
+  },
+  stepType: {
+    type: String,
+    enum: ['execution', 'testing'],
+    default: 'execution'
+  }
+}, { _id: false });
+
 const itemSchema = new mongoose.Schema({
+  // Basic Information
+  type: {
+    type: String,
+    enum: ['product', 'service'],
+    default: 'product'
+  },
   name: {
     type: String,
     required: true,
     trim: true
   },
-  itemCode: {
-    type: String,
-    unique: true,
-    trim: true
-  },
-  category: {
+  hsn: {
     type: String,
     trim: true
   },
   unit: {
     type: String,
-    default: 'PCS'
+    trim: true,
+    default: ''
   },
+  category: {
+    type: String,
+    trim: true
+  },
+  code: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  image: {
+    type: String // image
+  },
+
+  // Pricing Section
   salePrice: {
-    type: Number,
-    default: 0
+    type: String,
+    default: ''
+  },
+  salePriceTaxType: {
+    type: String,
+    enum: ['without', 'with'],
+    default: 'without'
+  },
+  saleDiscountType: {
+    type: String,
+    enum: ['percentage', 'flat'],
+    default: 'percentage'
   },
   purchasePrice: {
-    type: Number,
-    default: 0
+    type: String,
+    default: ''
+  },
+  purchasePriceTaxType: {
+    type: String,
+    enum: ['without', 'with'],
+    default: 'without'
   },
   taxRate: {
-    type: Number,
-    default: 0
+    type: String,
+    default: 'None'
   },
-  hsnCode: {
+
+  // Stock Section
+  openingQty: {
+    type: String,
+    default: ''
+  },
+  atPrice: {
+    type: String,
+    default: ''
+  },
+  asOfDate: {
+    type: Date
+  },
+  minStock: {
+    type: String,
+    default: ''
+  },
+  location: {
     type: String,
     trim: true
   },
-  stockQuantity: {
-    type: Number,
-    default: 0
-  },
-  minStockLevel: {
-    type: Number,
-    default: 0
-  },
-  description: {
-    type: String,
-    trim: true
-  }
+
+  // Processes Section - Manufacturing steps
+  processes: [processStepSchema]
 }, {
   timestamps: true
 });
