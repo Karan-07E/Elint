@@ -8,6 +8,22 @@ import ItemPage from "./pages/item.jsx";
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // Helper function to get user role
+  const getUserRole = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      return user?.role || 'user';
+    } catch {
+      return 'user';
+    }
+  };
+
+  // Helper function to get default route based on role
+  const getDefaultRoute = () => {
+    const role = getUserRole();
+    return role === 'product team' ? '/items' : '/';
+  };
+
   // Check if user is logged in (token exists) and update state
   useEffect(() => {
     const checkAuth = () => {
@@ -36,7 +52,31 @@ function App() {
         <Route
           path="/"
           element={
-            isAuthenticated ? <Home /> : <Navigate to="/login" replace />
+            isAuthenticated ? (
+              getUserRole() === 'product team' ? (
+                <Navigate to="/items" replace />
+              ) : (
+                <Home />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Home route for admin and user */}
+        <Route
+          path="/home"
+          element={
+            isAuthenticated ? (
+              getUserRole() === 'product team' ? (
+                <Navigate to="/items" replace />
+              ) : (
+                <Home />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
 
@@ -44,7 +84,7 @@ function App() {
         <Route
           path="/login"
           element={
-            isAuthenticated ? <Navigate to="/" replace /> : <Login />
+            isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Login />
           }
         />
 
@@ -52,7 +92,7 @@ function App() {
         <Route
           path="/signup"
           element={
-            isAuthenticated ? <Navigate to="/" replace /> : <Signup />
+            isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Signup />
           }
         />
 

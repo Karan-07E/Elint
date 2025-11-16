@@ -35,7 +35,13 @@ const Login = () => {
         window.dispatchEvent(new Event('authChange'));
         
         alert("Login successful!");
-        navigate("/"); // redirects to home page
+        
+        // Redirect based on user role
+        if (data.user.role === 'product team') {
+          navigate("/items");
+        } else {
+          navigate("/"); // redirects to home page for admin and user
+        }
       } else {
         alert(data.message || "Login failed. Please check your credentials.");
       }

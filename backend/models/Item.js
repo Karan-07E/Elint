@@ -21,6 +21,11 @@ const processStepSchema = new mongoose.Schema({
     type: String,
     enum: ['execution', 'testing'],
     default: 'execution'
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'completed'],
+    default: 'pending'
   }
 }, { _id: false });
 

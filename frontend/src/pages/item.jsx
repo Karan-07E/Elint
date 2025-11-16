@@ -35,6 +35,7 @@ const defaultForm = () => ({
       description: "",
       details: "",
       stepType: "execution",
+      status: "pending",
     },
   ],
 });
@@ -50,6 +51,11 @@ export default function ItemPage() {
   const [showForm, setShowForm] = useState(false);
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(true);
+  
+  // New states for view progress
+  const [showProgress, setShowProgress] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [progressProcesses, setProgressProcesses] = useState([]);
 
   const fileInputRef = useRef(null);
 
@@ -235,6 +241,74 @@ export default function ItemPage() {
     navigate('/items');
   };
 
+  const handleViewProgress = (item) => {
+    setSelectedItem(item);
+    setProgressProcesses(item.processes || []);
+    setShowProgress(true);
+    setMessage(null);
+    setError(null);
+  };
+
+  const handleProcessCheckboxChange = (processId) => {
+    setProgressProcesses(prevProcesses =>
+      prevProcesses.map(process => {
+        if (process.id === processId && process.status !== 'completed') {
+          return { ...process, status: 'completed' };
+        }
+        return process;
+      })
+    );
+  };
+
+  const handleSaveProgress = async () => {
+    if (!selectedItem) return;
+    
+    setLoading(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const payload = {
+        ...selectedItem,
+        processes: progressProcesses
+      };
+
+      await updateItem(selectedItem._id, payload);
+      setMessage("Progress saved successfully");
+      await loadItems();
+      
+      setTimeout(() => {
+        setShowProgress(false);
+        setSelectedItem(null);
+        setProgressProcesses([]);
+        setMessage(null);
+      }, 1500);
+    } catch (err) {
+      console.error("Save progress error:", err);
+      setError(err?.response?.data?.message || "Failed to save progress");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBackFromProgress = () => {
+    setShowProgress(false);
+    setSelectedItem(null);
+    setProgressProcesses([]);
+  };
+
+  // Get user role to determine which actions to show
+  const getUserRole = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      return user?.role || 'user';
+    } catch {
+      return 'user';
+    }
+  };
+
+  const userRole = getUserRole();
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar />
@@ -269,18 +343,171 @@ export default function ItemPage() {
             </div>
           )}
 
-          {!showForm ? (
+          {showProgress ? (
+            // View Progress View
+            <div className="bg-white rounded-lg shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-800">View Progress - {selectedItem?.name}</h2>
+                <button
+                  onClick={handleBackFromProgress}
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6">
+                {/* Item Details */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Item Details</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Item Name</p>
+                      <p className="text-sm font-medium text-gray-900">{selectedItem?.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Type</p>
+                      <p className="text-sm font-medium text-gray-900 capitalize">{selectedItem?.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Category</p>
+                      <p className="text-sm font-medium text-gray-900 capitalize">{selectedItem?.category || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Code</p>
+                      <p className="text-sm font-medium text-gray-900">{selectedItem?.code || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">HSN</p>
+                      <p className="text-sm font-medium text-gray-900">{selectedItem?.hsn || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Unit</p>
+                      <p className="text-sm font-medium text-gray-900">{selectedItem?.unit || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Sale Price</p>
+                      <p className="text-sm font-medium text-gray-900">₹{selectedItem?.salePrice || '0'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Purchase Price</p>
+                      <p className="text-sm font-medium text-gray-900">₹{selectedItem?.purchasePrice || '0'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Stock</p>
+                      <p className="text-sm font-medium text-gray-900">{selectedItem?.openingQty || '0'} {selectedItem?.unit || ''}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manufacturing Process Steps */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Manufacturing Process Steps</h3>
+                  {progressProcesses.length > 0 ? (
+                    <div className="space-y-4">
+                      {progressProcesses.map((process, index) => (
+                        <div
+                          key={process.id}
+                          className={`p-4 border rounded-lg ${
+                            process.status === 'completed'
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-white border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="flex-shrink-0 mt-1">
+                              <input
+                                type="checkbox"
+                                checked={process.status === 'completed'}
+                                onChange={() => handleProcessCheckboxChange(process.id)}
+                                disabled={process.status === 'completed'}
+                                className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h4 className="text-base font-semibold text-gray-900">
+                                  Step {index + 1}: {process.stepName}
+                                </h4>
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    process.stepType === 'testing'
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                  }`}
+                                >
+                                  {process.stepType === 'testing' ? '🧪 Testing' : '⚙️ Execution'}
+                                </span>
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    process.status === 'completed'
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-yellow-100 text-yellow-700'
+                                  }`}
+                                >
+                                  {process.status === 'completed' ? '✓ Completed' : '⏳ Pending'}
+                                </span>
+                              </div>
+                              {process.description && (
+                                <p className="text-sm text-gray-600 mb-2">{process.description}</p>
+                              )}
+                              {process.details && (
+                                <div className="text-sm text-gray-700 bg-white p-3 rounded border border-gray-200">
+                                  <pre className="whitespace-pre-wrap font-sans">{process.details}</pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No manufacturing processes defined for this item.</p>
+                  )}
+                </div>
+
+                {/* Save Button */}
+                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                  <button
+                    onClick={handleBackFromProgress}
+                    className="text-gray-600 hover:text-gray-800 px-4 py-2.5 rounded text-sm font-medium transition-colors"
+                  >
+                    ← Back to List
+                  </button>
+                  <button
+                    onClick={handleSaveProgress}
+                    disabled={loading}
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>💾</span>
+                        <span>Save Progress</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : !showForm ? (
             // Items List View
             <div className="bg-white rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-800">Items</h2>
-                <button
-                  onClick={handleAddItem}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2"
-                >
-                  <span>+</span>
-                  <span>ADD ITEM</span>
-                </button>
+                {userRole !== 'product team' && (
+                  <button
+                    onClick={handleAddItem}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    <span>+</span>
+                    <span>ADD ITEM</span>
+                  </button>
+                )}
               </div>
 
               <div className="p-6">
@@ -351,18 +578,29 @@ export default function ItemPage() {
                             <td className="py-3 px-4 text-sm text-gray-600">{item.openingQty || '0'} {item.unit || ''}</td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => handleEditItem(item)}
-                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteItem(item._id)}
-                                  className="text-red-600 hover:text-red-800 text-sm font-medium"
-                                >
-                                  Delete
-                                </button>
+                                {userRole === 'product team' ? (
+                                  <button
+                                    onClick={() => handleViewProgress(item)}
+                                    className="text-white bg-green-500 hover:bg-green-600 text-sm font-medium p-2 rounded-lg"
+                                  >
+                                    View Progress
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleEditItem(item)}
+                                      className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteItem(item._id)}
+                                      className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -910,6 +1148,7 @@ export default function ItemPage() {
                             description: "",
                             details: "",
                             stepType: "execution",
+                            status: "pending",
                           },
                         ];
                         updateField("processes", newProcesses);

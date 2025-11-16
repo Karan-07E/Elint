@@ -32,20 +32,6 @@ const Sidebar = () => {
     }
   };
 
-  const menuItems = [
-    { path: '/home', icon: '🏠', label: 'Home' },
-    { path: '/parties', icon: '👥', label: 'Parties', hasSubmenu: true },
-    { path: '/items', icon: '📦', label: 'Items', hasSubmenu: true },
-    { path: '/sale', icon: '📝', label: 'Sale', hasSubmenu: true },
-    { path: '/purchase', icon: '🛒', label: 'Purchase & Expense', hasSubmenu: true },
-    { path: '/cash-bank', icon: '💰', label: 'Cash & Bank', hasSubmenu: true },
-    { path: '/reports', icon: '📊', label: 'Reports' },
-    { path: '/sync', icon: '🔄', label: 'Sync, Share & Backup', hasSubmenu: true },
-    { path: '/bulk-gst', icon: '📋', label: 'Bulk GST Update' },
-    { path: '/utilities', icon: '🔧', label: 'Utilities', hasSubmenu: true },
-    { path: '/settings', icon: '⚙️', label: 'Settings' },
-  ];
-
   // Read stored user details
   const stored = (() => {
     try {
@@ -56,6 +42,25 @@ const Sidebar = () => {
   })();
   const displayName = stored.name || stored.email || 'Asd';
   const initial = (displayName || 'A').toString().trim().charAt(0).toUpperCase();
+  const userRole = stored.role || 'user';
+
+  // Define all menu items with role-based access
+  const allMenuItems = [
+    { path: '/home', icon: '🏠', label: 'Home', roles: ['user', 'admin'] },
+    { path: '/parties', icon: '👥', label: 'Parties', hasSubmenu: true, roles: ['user', 'admin'] },
+    { path: '/items', icon: '📦', label: 'Items', hasSubmenu: true, roles: ['user', 'admin', 'product team'] },
+    { path: '/sale', icon: '📝', label: 'Sale', hasSubmenu: true, roles: ['user', 'admin'] },
+    { path: '/purchase', icon: '🛒', label: 'Purchase & Expense', hasSubmenu: true, roles: ['user', 'admin'] },
+    { path: '/cash-bank', icon: '💰', label: 'Cash & Bank', hasSubmenu: true, roles: ['user', 'admin'] },
+    { path: '/reports', icon: '📊', label: 'Reports', roles: ['user', 'admin'] },
+    { path: '/sync', icon: '🔄', label: 'Sync, Share & Backup', hasSubmenu: true, roles: ['user', 'admin'] },
+    { path: '/bulk-gst', icon: '📋', label: 'Bulk GST Update', roles: ['user', 'admin'] },
+    { path: '/utilities', icon: '🔧', label: 'Utilities', hasSubmenu: true, roles: ['user', 'admin'] },
+    { path: '/settings', icon: '⚙️', label: 'Settings', roles: ['user', 'admin', 'product team'] },
+  ];
+
+  // Filter menu items based on user role
+  const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
 
   return (
     <div className="w-64 bg-slate-800 text-white h-screen flex flex-col overflow-y-auto fixed left-0 top-0">
