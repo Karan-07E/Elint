@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { createItem, getItemById, updateItem } from "../services/api";
+import { createItem, getItemById, updateItem, getAllItems, deleteItem } from "../services/api";
 import Sidebar from "../components/Sidebar";
 
 const defaultForm = () => ({
@@ -45,17 +45,41 @@ export default function ItemPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+  
+  // New states for list view
+  const [showForm, setShowForm] = useState(false);
+  const [items, setItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(true);
 
   const fileInputRef = useRef(null);
 
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Fetch all items on component mount
+  useEffect(() => {
+    loadItems();
+  }, []);
+
+  const loadItems = async () => {
+    setLoadingItems(true);
+    try {
+      const response = await getAllItems();
+      setItems(response.data || []);
+    } catch (err) {
+      console.error("Failed to load items:", err);
+      setError("Failed to load items");
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
   // Check for ?id= query param to support editing
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const id = params.get("id");
     if (id) {
+      setShowForm(true);
       setLoading(true);
       getItemById(id)
         .then((res) => {
@@ -74,6 +98,7 @@ export default function ItemPage() {
             salePriceTaxType: data.salePriceTaxType || "without",
             saleDiscountType: data.saleDiscountType || "percentage",
             purchasePrice: data.purchasePrice || "",
+            purchasePriceTaxType: data.purchasePriceTaxType || "without",
             taxRate: data.taxRate || "None",
             openingQty: data.openingQty || "",
             atPrice: data.atPrice || "",
@@ -155,18 +180,59 @@ export default function ItemPage() {
         setMessage("Item created successfully");
       }
 
+      // Reload items list
+      await loadItems();
+
       if (resetAfter && !id) {
         setForm(defaultForm());
+      } else {
+        // Go back to list view after save
+        setTimeout(() => {
+          setShowForm(false);
+          setForm(defaultForm());
+          navigate('/items');
+        }, 1500);
       }
-
-      // optionally navigate back to items list
-      // navigate('/items');
     } catch (err) {
       console.error("save item error", err);
       setError(err?.response?.data?.message || "Failed to save item");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAddItem = () => {
+    setForm(defaultForm());
+    setShowForm(true);
+    setMessage(null);
+    setError(null);
+  };
+
+  const handleEditItem = (item) => {
+    navigate(`/items?id=${item._id}`);
+  };
+
+  const handleDeleteItem = async (itemId) => {
+    if (!window.confirm("Are you sure you want to delete this item?")) {
+      return;
+    }
+    
+    try {
+      await deleteItem(itemId);
+      setMessage("Item deleted successfully");
+      await loadItems();
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      console.error("Delete item error:", err);
+      setError("Failed to delete item");
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const handleBackToList = () => {
+    setShowForm(false);
+    setForm(defaultForm());
+    navigate('/items');
   };
 
   return (
@@ -191,12 +257,130 @@ export default function ItemPage() {
 
       <div className="ml-64 p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-lg shadow-sm">
+          {/* Messages - Show at top level */}
+          {message && (
+            <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
+              {message}
+            </div>
+          )}
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+              {error}
+            </div>
+          )}
+
+          {!showForm ? (
+            // Items List View
+            <div className="bg-white rounded-lg shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-800">Items</h2>
+                <button
+                  onClick={handleAddItem}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  <span>+</span>
+                  <span>ADD ITEM</span>
+                </button>
+              </div>
+
+              <div className="p-6">
+                {loadingItems ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="mt-2 text-gray-600">Loading items...</p>
+                  </div>
+                ) : items.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 mb-4">No items found</p>
+                    <button
+                      onClick={handleAddItem}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-medium transition-colors"
+                    >
+                      Add Your First Item
+                    </button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Image</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Name</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Code</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Type</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Sale Price</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Stock</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <tr key={item._id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4">
+                              {item.image ? (
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="w-12 h-12 object-cover rounded border border-gray-200"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                                  <span className="text-gray-400 text-xs">No img</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                              {item.hsn && <div className="text-xs text-gray-500">HSN: {item.hsn}</div>}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">{item.code || '-'}</td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                item.type === 'product' 
+                                  ? 'bg-blue-100 text-blue-700' 
+                                  : 'bg-purple-100 text-purple-700'
+                              }`}>
+                                {item.type}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600 capitalize">{item.category || '-'}</td>
+                            <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                              ₹{item.salePrice || '0'}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">{item.openingQty || '0'} {item.unit || ''}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleEditItem(item)}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteItem(item._id)}
+                                  className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            // Item Form View
+            <div className="bg-white rounded-lg shadow-sm">
             {/* Card Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-gray-800">
-                  Add Item
+                  {location.search.includes('id=') ? 'Edit Item' : 'Add Item'}
                 </h2>
                 <div className="flex items-center gap-3 mt-2">
                   <div className="flex items-center bg-gray-100 rounded-full p-1">
@@ -222,6 +406,14 @@ export default function ItemPage() {
                     </button>
                   </div>
                 </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  className="text-gray-400 hover:text-gray-600 text-xl"
+                  onClick={handleBackToList}
+                >
+                  ✕
+                </button>
               </div>
             </div>
 
@@ -732,36 +924,33 @@ export default function ItemPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+              <div className="flex items-center justify-between gap-3 mt-8 pt-6 border-t border-gray-200">
                 <button
-                  onClick={() => submit(true)}
-                  disabled={loading}
-                  className="bg-white border border-gray-300 hover:bg-gray-50 px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleBackToList}
+                  className="text-gray-600 hover:text-gray-800 px-4 py-2.5 rounded text-sm font-medium transition-colors"
                 >
-                  {loading ? "Saving..." : "Save & New"}
+                  ← Back to List
                 </button>
-                <button
-                  onClick={() => submit(false)}
-                  disabled={loading}
-                  className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? "Saving..." : "Save"}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => submit(true)}
+                    disabled={loading}
+                    className="bg-white border border-gray-300 hover:bg-gray-50 px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Saving..." : "Save & New"}
+                  </button>
+                  <button
+                    onClick={() => submit(false)}
+                    disabled={loading}
+                    className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Saving..." : "Save"}
+                  </button>
+                </div>
               </div>
-
-              {/* Messages */}
-              {message && (
-                <div className="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
-                  {message}
-                </div>
-              )}
-              {error && (
-                <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
-                  {error}
-                </div>
-              )}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
