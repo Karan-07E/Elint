@@ -72,5 +72,6 @@ export const updateOrder = (id, data) => api.put(`/orders/${id}`, data);
 export const updateOrderStatus = (id, status) => api.patch(`/orders/${id}/status`, { status });
 export const deleteOrder = (id) => api.delete(`/orders/${id}`);
 export const getOrderStats = () => api.get('/orders/stats/summary');
+export const searchOrders = (params = {}) => api.get('/orders', { params });
 
 export default api;

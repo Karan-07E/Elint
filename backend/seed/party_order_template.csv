@@ -1,0 +1,2 @@
+partyName,partyType,phone,email,gstin,billingStreet,billingCity,billingState,billingPincode,openingBalance,balanceType,orderNumber,orderDate,priority,status,itemName,itemQuantity,itemRate,itemAmount,totalAmount
+Abhinav,customer,9333911911,abhinav@example.com,29ABCDE1234F1Z5,Street 1,Bengaluru,Karnataka,560001,2000,receivable,PO-1001,2024-05-22,high,queue,Sample Product,30,100,3000,3000

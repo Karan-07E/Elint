@@ -4,6 +4,7 @@ import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
 import Home from "./pages/Home.jsx";
 import ItemPage from "./pages/item.jsx";
+import PartiesPage from "./pages/Parties.jsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -77,6 +78,14 @@ function App() {
             ) : (
               <Navigate to="/login" replace />
             )
+          }
+        />
+
+        {/* Parties Page */}
+        <Route
+          path="/parties"
+          element={
+            isAuthenticated ? <PartiesPage /> : <Navigate to="/login" replace />
           }
         />
 

@@ -4,11 +4,23 @@ const Order = require('../models/Order');
 const Party = require('../models/Party');
 const Item = require('../models/Item');
 
-// Get all orders
+// Get all orders (with optional status, party, and search filters)
 router.get('/', async (req, res) => {
   try {
-    const { status } = req.query;
-    const filter = status ? { status } : {};
+    const { status, partyId, search } = req.query;
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+    if (partyId) {
+      filter.party = partyId;
+    }
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [{ orderNumber: regex }];
+    }
+
     const orders = await Order.find(filter)
       .populate('party', 'name phone')
       .populate('items.item', 'name')
