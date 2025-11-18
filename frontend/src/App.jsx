@@ -7,6 +7,7 @@ import ItemPage from "./pages/item.jsx";
 import SaleInvoice from "./pages/SaleInvoice.jsx"; // <-- Add this import
 import Purchase from "./pages/Purchase.jsx";           // <-- NEW
 import PurchaseBill from "./pages/PurchaseBill.jsx"; // <-- NEW
+import PartiesPage from "./pages/Parties.jsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -80,6 +81,14 @@ function App() {
             ) : (
               <Navigate to="/login" replace />
             )
+          }
+        />
+
+        {/* Parties Page */}
+        <Route
+          path="/parties"
+          element={
+            isAuthenticated ? <PartiesPage /> : <Navigate to="/login" replace />
           }
         />
 

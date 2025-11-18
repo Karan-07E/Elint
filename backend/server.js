@@ -28,6 +28,7 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes = require('./routes/userRoutes');
+const exportRoutes = require('./routes/exportRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
@@ -38,6 +39,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/export', exportRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

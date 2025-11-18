@@ -7,7 +7,8 @@
     "server": "cd backend && npm start",
     "client": "cd frontend && npm start",
     "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm start\"",
-    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && node seed/seedPartiesAndOrders.js"
   },
   "keywords": [
     "vyapar",
