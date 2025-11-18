@@ -77,7 +77,7 @@ const itemSchema = new mongoose.Schema({
     default: ''
   },
   image: {
-    type: String // image
+    type: String
   },
 
   // Pricing Section
@@ -130,10 +130,24 @@ const itemSchema = new mongoose.Schema({
     trim: true
   },
 
+  // Current Stock - for tracking real-time inventory
+  currentStock: {
+    type: Number,
+    default: 0
+  },
+
   // Processes Section - Manufacturing steps
   processes: [processStepSchema]
 }, {
   timestamps: true
+});
+
+// Pre-save hook to initialize currentStock from openingQty for new items
+itemSchema.pre('save', function(next) {
+  if (this.isNew && this.openingQty) {
+    this.currentStock = parseFloat(this.openingQty) || 0;
+  }
+  next();
 });
 
 module.exports = mongoose.model('Item', itemSchema);
