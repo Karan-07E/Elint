@@ -5,6 +5,7 @@ import Signup from "./pages/Signup.jsx";
 import Home from "./pages/Home.jsx";
 import ItemPage from "./pages/item.jsx";
 import PartiesPage from "./pages/Parties.jsx";
+import Settings from "./pages/Settings.jsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -46,7 +47,7 @@ function App() {
     };
   }, []);
 
-  return (
+  return ( 
     <Router>
       <Routes>
         {/* Protected Home Page */}
@@ -110,6 +111,14 @@ function App() {
           path="/items"
           element={
             isAuthenticated ? <ItemPage /> : <Navigate to="/login" replace />
+          }
+        />
+
+        {/* Settings Page */}
+        <Route
+          path="/settings"
+          element={
+            isAuthenticated ? <Settings /> : <Navigate to="/login" replace />
           }
         />
 

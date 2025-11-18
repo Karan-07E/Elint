@@ -43,6 +43,7 @@ const Sidebar = () => {
   const displayName = stored.name || stored.email || 'Asd';
   const initial = (displayName || 'A').toString().trim().charAt(0).toUpperCase();
   const userRole = stored.role || 'user';
+  const profilePhoto = stored.profilePhoto || '';
 
   // Define all menu items with role-based access
   const allMenuItems = [
@@ -92,17 +93,25 @@ const Sidebar = () => {
       </nav>
 
       <div className="p-4 border-t border-white/10 mt-auto">
-        <div className="bg-white/10 hover:bg-white/20 rounded-lg px-3 py-2 cursor-pointer transition-colors mb-2">
+        <Link to="/settings" className="bg-white/10 hover:bg-white/20 rounded-lg px-3 py-2 cursor-pointer transition-colors mb-2 block">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-semibold">
-                {initial}
-              </div>
+              {profilePhoto ? (
+                <img
+                  src={profilePhoto}
+                  alt={displayName}
+                  className="w-8 h-8 rounded-full object-cover border border-white/20"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-semibold">
+                  {initial}
+                </div>
+              )}
               <span className="flex-1 ml-2 text-sm font-medium">{displayName}</span>
               <span className="text-white/60 text-lg">›</span>
             </div>
           </div>
-        </div>
+        </Link>
         <button 
           onClick={handleLogout}
           className="w-full bg-red-500 hover:bg-red-600 text-white text-sm px-3 py-2 rounded-md flex items-center justify-center gap-2 transition-colors"

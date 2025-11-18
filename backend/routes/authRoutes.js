@@ -52,7 +52,14 @@ router.post('/signup', async (req, res) => {
     res.status(201).json({ 
       message: 'User registered successfully', 
       token,
-      user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role }
+      user: { 
+        id: newUser._id, 
+        name: newUser.name, 
+        email: newUser.email, 
+        role: newUser.role,
+        profilePhoto: newUser.profilePhoto || '',
+        themePreference: newUser.themePreference || 'light'
+      }
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -91,7 +98,14 @@ router.post('/login', async (req, res) => {
     res.json({ 
       message: 'Login successful',
       token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role }
+      user: { 
+        id: user._id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role,
+        profilePhoto: user.profilePhoto || '',
+        themePreference: user.themePreference || 'light'
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -107,6 +121,102 @@ router.post('/logout', authenticateToken, (req, res) => {
   // 3. Clear any server-side session data
   
   res.json({ message: 'Logout successful' });
+});
+
+// ✅ GET CURRENT USER PROFILE
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ✅ UPDATE USER PROFILE
+router.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    const { name, email, profilePhoto, themePreference, role } = req.body;
+    
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if email is being changed and if it's already taken
+    if (email && email !== user.email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+    }
+
+    // Update fields
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (profilePhoto !== undefined) user.profilePhoto = profilePhoto;
+    if (themePreference) user.themePreference = themePreference;
+    if (role) user.role = role;
+
+    await user.save();
+
+    // Generate new token with updated info
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      message: 'Profile updated successfully',
+      token,
+      user: { 
+        id: user._id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+        themePreference: user.themePreference
+      }
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ✅ CHANGE PASSWORD
+router.put('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({ message: 'New password is required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 module.exports = router;
