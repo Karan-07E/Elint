@@ -38,6 +38,32 @@ const defaultForm = () => ({
       status: "pending",
     },
   ],
+
+  // Raw Materials
+  rawMaterials: [
+    {
+      id: 1,
+      materialName: "",
+      quantity: "",
+      unit: "",
+      costPerUnit: "",
+      supplier: "",
+      notes: "",
+      usedInProcessStep: null,
+    },
+  ],
+
+  // Inspection Checks
+  inspectionChecks: [
+    {
+      id: 1,
+      checkName: "",
+      description: "",
+      checkType: "visual",
+      acceptanceCriteria: "",
+      status: "pending",
+    },
+  ],
 });
 
 export default function ItemPage() {
@@ -57,6 +83,10 @@ export default function ItemPage() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [progressProcesses, setProgressProcesses] = useState([]);
 
+  // States for item name dropdown
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const [itemNameSearch, setItemNameSearch] = useState("");
+
   const fileInputRef = useRef(null);
 
   const location = useLocation();
@@ -66,6 +96,24 @@ export default function ItemPage() {
   useEffect(() => {
     loadItems();
   }, []);
+
+  // Sync itemNameSearch with form.name when editing
+  useEffect(() => {
+    if (form.name && !itemNameSearch) {
+      setItemNameSearch(form.name);
+    }
+  }, [form.name]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showItemDropdown && !event.target.closest('.item-name-dropdown-container')) {
+        setShowItemDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showItemDropdown]);
 
   const loadItems = async () => {
     setLoadingItems(true);
@@ -115,6 +163,14 @@ export default function ItemPage() {
               data.processes && data.processes.length > 0
                 ? data.processes
                 : f.processes,
+            rawMaterials:
+              data.rawMaterials && data.rawMaterials.length > 0
+                ? data.rawMaterials
+                : f.rawMaterials,
+            inspectionChecks:
+              data.inspectionChecks && data.inspectionChecks.length > 0
+                ? data.inspectionChecks
+                : f.inspectionChecks,
           }));
         })
         .catch((err) => {
@@ -126,6 +182,322 @@ export default function ItemPage() {
   }, [location.search]);
 
   const updateField = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+
+  const generateReportHTML = () => {
+    const currentDate = new Date().toLocaleDateString('en-IN', { 
+      day: '2-digit',
+      month: '2-digit', 
+      year: 'numeric'
+    });
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Item Report - ${form.name || 'Unnamed Item'}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: Arial, sans-serif; 
+              padding: 40px; 
+              background: #fff;
+              color: #000;
+              font-size: 12px;
+            }
+            .header { 
+              text-align: center; 
+              margin-bottom: 20px; 
+              padding-bottom: 15px; 
+              border-bottom: 2px solid #000;
+            }
+            .header h1 { 
+              color: #000; 
+              font-size: 18px; 
+              font-weight: bold;
+              margin-bottom: 5px;
+            }
+            .header p { 
+              color: #000; 
+              font-size: 11px;
+            }
+            .section { 
+              margin-bottom: 20px; 
+              page-break-inside: avoid;
+            }
+            .section-title { 
+              background: #fff;
+              color: #000; 
+              padding: 8px 0; 
+              font-size: 13px; 
+              font-weight: bold;
+              border-bottom: 1px solid #000;
+              margin-bottom: 10px;
+              text-transform: uppercase;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 10px;
+            }
+            table, th, td {
+              border: 1px solid #000;
+            }
+            th {
+              background: #f5f5f5;
+              padding: 8px;
+              text-align: left;
+              font-weight: bold;
+              font-size: 11px;
+            }
+            td {
+              padding: 8px;
+              font-size: 11px;
+            }
+            .info-row {
+              display: flex;
+              margin-bottom: 5px;
+            }
+            .info-label { 
+              width: 150px;
+              font-weight: bold;
+              font-size: 11px;
+            }
+            .info-value { 
+              flex: 1;
+              font-size: 11px;
+            }
+            .process-item { 
+              margin-bottom: 10px; 
+              padding: 8px;
+              border: 1px solid #000;
+            }
+            .process-header { 
+              font-weight: bold;
+              margin-bottom: 5px;
+              font-size: 11px;
+            }
+            .substep { 
+              margin-left: 20px; 
+              font-size: 11px;
+              margin-top: 3px;
+            }
+            .footer { 
+              margin-top: 30px; 
+              text-align: center; 
+              font-size: 10px;
+              padding-top: 15px;
+              border-top: 1px solid #000;
+            }
+            @media print {
+              body { padding: 20px; }
+              .section { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>ITEM SUMMARY REPORT</h1>
+            <p>Date: ${currentDate}</p>
+          </div>
+
+          <!-- Basic Information -->
+          <div class="section">
+            <div class="section-title">Basic Information</div>
+            <table>
+              <tr>
+                <th>Item Type</th>
+                <th>Item Name</th>
+                <th>Item Code</th>
+              </tr>
+              <tr>
+                <td>${form.type || '-'}</td>
+                <td>${form.name || '-'}</td>
+                <td>${form.code || '-'}</td>
+              </tr>
+              <tr>
+                <th>HSN</th>
+                <th>Unit</th>
+                <th>Category</th>
+              </tr>
+              <tr>
+                <td>${form.hsn || '-'}</td>
+                <td>${form.unit || '-'}</td>
+                <td>${form.category || '-'}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Pricing -->
+          <div class="section">
+            <div class="section-title">Pricing Details</div>
+            <table>
+              <tr>
+                <th>Sale Price</th>
+                <th>Tax Type</th>
+                <th>Purchase Price</th>
+                <th>Tax Type</th>
+                <th>Tax Rate</th>
+              </tr>
+              <tr>
+                <td>INR ${form.salePrice || '0'}</td>
+                <td>${form.salePriceTaxType === 'with' ? 'With Tax' : 'Without Tax'}</td>
+                <td>INR ${form.purchasePrice || '0'}</td>
+                <td>${form.purchasePriceTaxType === 'with' ? 'With Tax' : 'Without Tax'}</td>
+                <td>${form.taxRate || 'None'}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Stock -->
+          <div class="section">
+            <div class="section-title">Stock Information</div>
+            <table>
+              <tr>
+                <th>Opening Quantity</th>
+                <th>At Price</th>
+                <th>As Of Date</th>
+                <th>Minimum Stock</th>
+                <th>Location</th>
+              </tr>
+              <tr>
+                <td>${form.openingQty || '0'} ${form.unit || ''}</td>
+                <td>INR ${form.atPrice || '0'}</td>
+                <td>${form.asOfDate || '-'}</td>
+                <td>${form.minStock || '-'} ${form.unit || ''}</td>
+                <td>${form.location || '-'}</td>
+              </tr>
+            </table>
+          </div>
+
+          ${form.processes && form.processes.some(p => p.stepName) ? `
+          <!-- Processes -->
+          <div class="section">
+            <div class="section-title">Manufacturing Process Steps</div>
+            <table>
+              <tr>
+                <th>Step No.</th>
+                <th>Step Name</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Sub-Steps</th>
+              </tr>
+              ${form.processes.filter(p => p.stepName).map((process, index) => `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${process.stepName}</td>
+                  <td>${process.stepType === 'testing' ? 'Testing' : 'Execution'}</td>
+                  <td>${process.description || '-'}</td>
+                  <td>
+                    ${process.subSteps && process.subSteps.length > 0 
+                      ? process.subSteps.map(sub => `${sub.name}${sub.description ? ' - ' + sub.description : ''}`).join('<br>') 
+                      : '-'}
+                  </td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>
+          ` : ''}
+
+          ${form.rawMaterials && form.rawMaterials.some(m => m.materialName) ? `
+          <!-- Raw Materials -->
+          <div class="section">
+            <div class="section-title">Raw Materials Required</div>
+            <table>
+              <tr>
+                <th>Material Name</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+                <th>Cost/Unit</th>
+                <th>Supplier</th>
+                <th>Used in Step</th>
+              </tr>
+              ${form.rawMaterials.filter(m => m.materialName).map((material) => `
+                <tr>
+                  <td>${material.materialName}</td>
+                  <td>${material.quantity || '-'}</td>
+                  <td>${material.unit || '-'}</td>
+                  <td>INR ${material.costPerUnit || '0'}</td>
+                  <td>${material.supplier || '-'}</td>
+                  <td>${material.usedInProcessStep 
+                    ? `Step ${form.processes.findIndex(p => p.id === material.usedInProcessStep) + 1}`
+                    : 'Not linked'}</td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>
+          ` : ''}
+
+          ${form.inspectionChecks && form.inspectionChecks.some(c => c.checkName) ? `
+          <!-- Inspection Checks -->
+          <div class="section">
+            <div class="section-title">Quality Inspection Checks</div>
+            <table>
+              <tr>
+                <th>Check No.</th>
+                <th>Check Name</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Description</th>
+                <th>Acceptance Criteria</th>
+              </tr>
+              ${form.inspectionChecks.filter(c => c.checkName).map((check, index) => `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${check.checkName}</td>
+                  <td>${check.checkType}</td>
+                  <td>${check.status}</td>
+                  <td>${check.description || '-'}</td>
+                  <td>${check.acceptanceCriteria || '-'}</td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>
+          ` : ''}
+
+          <div class="footer">
+            <p>This report was generated by Elints Manufacturing System</p>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const handleItemNameSelect = (selectedItem) => {
+    // Auto-fill all fields except HSN, code, and image
+    setForm((f) => ({
+      ...f,
+      name: selectedItem.name,
+      // Keep HSN, code, and imageBase64 unchanged
+      unit: selectedItem.unit || "",
+      category: selectedItem.category || "",
+      salePrice: selectedItem.salePrice || "",
+      salePriceTaxType: selectedItem.salePriceTaxType || "without",
+      saleDiscountType: selectedItem.saleDiscountType || "percentage",
+      purchasePrice: selectedItem.purchasePrice || "",
+      purchasePriceTaxType: selectedItem.purchasePriceTaxType || "without",
+      taxRate: selectedItem.taxRate || "None",
+      openingQty: selectedItem.openingQty || "",
+      atPrice: selectedItem.atPrice || "",
+      asOfDate: selectedItem.asOfDate ? selectedItem.asOfDate.slice(0, 10) : f.asOfDate,
+      minStock: selectedItem.minStock || "",
+      location: selectedItem.location || "",
+      processes:
+        selectedItem.processes && selectedItem.processes.length > 0
+          ? selectedItem.processes
+          : f.processes,
+      rawMaterials:
+        selectedItem.rawMaterials && selectedItem.rawMaterials.length > 0
+          ? selectedItem.rawMaterials
+          : f.rawMaterials,
+      inspectionChecks:
+        selectedItem.inspectionChecks && selectedItem.inspectionChecks.length > 0
+          ? selectedItem.inspectionChecks
+          : f.inspectionChecks,
+    }));
+    setItemNameSearch(selectedItem.name);
+    setShowItemDropdown(false);
+  };
 
   const handleImageSelect = (e) => {
     const file = e.target.files && e.target.files[0];
@@ -176,6 +548,8 @@ export default function ItemPage() {
         minStock: form.minStock,
         location: form.location,
         processes: form.processes,
+        rawMaterials: form.rawMaterials,
+        inspectionChecks: form.inspectionChecks,
       };
 
       if (id) {
@@ -191,11 +565,13 @@ export default function ItemPage() {
 
       if (resetAfter && !id) {
         setForm(defaultForm());
+        setItemNameSearch("");
       } else {
         // Go back to list view after save
         setTimeout(() => {
           setShowForm(false);
           setForm(defaultForm());
+          setItemNameSearch("");
           navigate('/items');
         }, 1500);
       }
@@ -209,6 +585,7 @@ export default function ItemPage() {
 
   const handleAddItem = () => {
     setForm(defaultForm());
+    setItemNameSearch("");
     setShowForm(true);
     setMessage(null);
     setError(null);
@@ -238,6 +615,7 @@ export default function ItemPage() {
   const handleBackToList = () => {
     setShowForm(false);
     setForm(defaultForm());
+    setItemNameSearch("");
     navigate('/items');
   };
 
@@ -589,9 +967,8 @@ export default function ItemPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-200">
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Image</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Item Code</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Name</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Code</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Type</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Sale Price</th>
@@ -603,23 +980,12 @@ export default function ItemPage() {
                         {items.map((item) => (
                           <tr key={item._id} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="py-3 px-4">
-                              {item.image ? (
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-12 h-12 object-cover rounded border border-gray-200"
-                                />
-                              ) : (
-                                <div className="w-12 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
-                                  <span className="text-gray-400 text-xs">No img</span>
-                                </div>
-                              )}
+                              <div className="text-sm font-medium text-gray-900">{item.code || '-'}</div>
                             </td>
                             <td className="py-3 px-4">
                               <div className="text-sm font-medium text-gray-900">{item.name}</div>
                               {item.hsn && <div className="text-xs text-gray-500">HSN: {item.hsn}</div>}
                             </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">{item.code || '-'}</td>
                             <td className="py-3 px-4">
                               <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                 item.type === 'product' 
@@ -678,30 +1044,6 @@ export default function ItemPage() {
                 <h2 className="text-xl font-semibold text-gray-800">
                   {location.search.includes('id=') ? 'Edit Item' : 'Add Item'}
                 </h2>
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="flex items-center bg-gray-100 rounded-full p-1">
-                    <button
-                      onClick={() => updateField("type", "product")}
-                      className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                        form.type === "product"
-                          ? "bg-blue-500 text-white shadow-sm"
-                          : "text-gray-600 hover:text-gray-800"
-                      }`}
-                    >
-                      Product
-                    </button>
-                    <button
-                      onClick={() => updateField("type", "service")}
-                      className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                        form.type === "service"
-                          ? "bg-blue-500 text-white shadow-sm"
-                          : "text-gray-600 hover:text-gray-800"
-                      }`}
-                    >
-                      Service
-                    </button>
-                  </div>
-                </div>
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -716,16 +1058,59 @@ export default function ItemPage() {
             <div className="px-6 py-6">
               {/* Row 1: Item Name, HSN, Select Unit */}
               <div className="grid grid-cols-3 gap-4 mb-4">
-                <div>
+                <div className="relative item-name-dropdown-container">
                   <label className="block text-sm text-gray-600 mb-1.5">
                     Item Name *
                   </label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder=""
-                  />
+                  <div className="relative">
+                    <input
+                      value={itemNameSearch}
+                      onChange={(e) => {
+                        // Only update the name field, don't auto-fill other fields
+                        setItemNameSearch(e.target.value);
+                        updateField("name", e.target.value);
+                        setShowItemDropdown(true);
+                      }}
+                      onFocus={() => setShowItemDropdown(true)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                      placeholder="Type or select item name"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowItemDropdown(!showItemDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showItemDropdown ? '▲' : '▼'}
+                    </button>
+                    {showItemDropdown && items.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                        {items
+                          .filter((item) =>
+                            item.name.toLowerCase().includes(itemNameSearch.toLowerCase())
+                          )
+                          .slice(0, 20)
+                          .map((item) => (
+                            <div
+                              key={item._id}
+                              onClick={() => handleItemNameSelect(item)}
+                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900">{item.name}</div>
+                              {item.code && (
+                                <div className="text-xs text-gray-500">Code: {item.code}</div>
+                              )}
+                            </div>
+                          ))}
+                        {items.filter((item) =>
+                          item.name.toLowerCase().includes(itemNameSearch.toLowerCase())
+                        ).length === 0 && (
+                          <div className="px-3 py-2 text-sm text-gray-500 text-center">
+                            No matching items found
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -766,7 +1151,7 @@ export default function ItemPage() {
                 </div>
               </div>
 
-              {/* Row 2: Category, Item Code, Image Preview */}
+              {/* Row 2: Add Item Image */}
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="flex items-end">
                   <button
@@ -870,6 +1255,36 @@ export default function ItemPage() {
                     }`}
                   >
                     Processes
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("rawMaterials")}
+                    className={`pb-3 text-sm font-medium transition-all ${
+                      activeTab === "rawMaterials"
+                        ? "border-b-2 border-red-500 text-red-600"
+                        : "text-gray-600 hover:text-gray-800"
+                    }`}
+                  >
+                    Raw Materials
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("inspectionCheck")}
+                    className={`pb-3 text-sm font-medium transition-all ${
+                      activeTab === "inspectionCheck"
+                        ? "border-b-2 border-red-500 text-red-600"
+                        : "text-gray-600 hover:text-gray-800"
+                    }`}
+                  >
+                    Inspection Check
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("reports")}
+                    className={`pb-3 text-sm font-medium transition-all ${
+                      activeTab === "reports"
+                        ? "border-b-2 border-red-500 text-red-600"
+                        : "text-gray-600 hover:text-gray-800"
+                    }`}
+                  >
+                    Reports
                   </button>
                 </div>
 
@@ -1240,6 +1655,23 @@ export default function ItemPage() {
                               <span>Add Sub-Step</span>
                             </button>
                           </div>
+
+                          {/* Display linked raw materials for this process step */}
+                          {form.rawMaterials.filter(m => m.usedInProcessStep === process.id).length > 0 && (
+                            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded">
+                              <h5 className="text-xs font-semibold text-amber-800 mb-2">📦 Raw Materials for this Step:</h5>
+                              <div className="space-y-1">
+                                {form.rawMaterials
+                                  .filter(m => m.usedInProcessStep === process.id)
+                                  .map((material, matIndex) => (
+                                    <div key={matIndex} className="text-xs text-amber-700">
+                                      • {material.materialName || "Unnamed Material"} 
+                                      {material.quantity && material.unit && ` - ${material.quantity} ${material.unit}`}
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1265,6 +1697,620 @@ export default function ItemPage() {
                       <span>+</span>
                       <span>Add Another Process Step</span>
                     </button>
+                  </div>
+                )}
+
+                {activeTab === "rawMaterials" && (
+                  <div>
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                        Raw Materials Required
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-4">
+                        List all raw materials needed to manufacture this item, including quantities, costs, and suppliers.
+                      </p>
+                    </div>
+
+                    {form.rawMaterials.map((material, index) => (
+                      <div
+                        key={material.id}
+                        className="mb-6 pb-6 border-b border-gray-200 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <h4 className="text-sm font-medium text-gray-700">
+                              Material {index + 1}
+                            </h4>
+                            {material.usedInProcessStep && (
+                              <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                🔗 Linked to Step {form.processes.findIndex(p => p.id === material.usedInProcessStep) + 1}
+                              </span>
+                            )}
+                          </div>
+                          {form.rawMaterials.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newMaterials = form.rawMaterials.filter(
+                                  (_, i) => i !== index
+                                );
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              className="text-red-500 hover:text-red-700 text-sm font-medium"
+                            >
+                              Remove Material
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4 mb-3">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Material Name *
+                            </label>
+                            <input
+                              value={material.materialName}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].materialName = e.target.value;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              placeholder="e.g., Steel Sheet, Plastic Resin, Paint"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Quantity
+                            </label>
+                            <input
+                              value={material.quantity}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].quantity = e.target.value;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              placeholder="Quantity"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Unit
+                            </label>
+                            <select
+                              value={material.unit}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].unit = e.target.value;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                            >
+                              <option value="">Select Unit</option>
+                              <option value="kg">Kilograms (kg)</option>
+                              <option value="grams">Grams (g)</option>
+                              <option value="liters">Liters (L)</option>
+                              <option value="meters">Meters (m)</option>
+                              <option value="pieces">Pieces (pcs)</option>
+                              <option value="boxes">Boxes</option>
+                              <option value="rolls">Rolls</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-4 mb-3">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Cost Per Unit
+                            </label>
+                            <input
+                              value={material.costPerUnit}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].costPerUnit = e.target.value;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              placeholder="Cost Per Unit"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Supplier
+                            </label>
+                            <input
+                              value={material.supplier}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].supplier = e.target.value;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              placeholder="Supplier Name"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Used in Process Step
+                            </label>
+                            <select
+                              value={material.usedInProcessStep || ""}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].usedInProcessStep = e.target.value ? parseInt(e.target.value) : null;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                            >
+                              <option value="">Not linked to any step</option>
+                              {form.processes.map((process, processIndex) => (
+                                <option key={process.id} value={process.id}>
+                                  Step {processIndex + 1}: {process.stepName || "Unnamed Step"}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Notes
+                            </label>
+                            <input
+                              value={material.notes}
+                              onChange={(e) => {
+                                const newMaterials = [...form.rawMaterials];
+                                newMaterials[index].notes = e.target.value;
+                                updateField("rawMaterials", newMaterials);
+                              }}
+                              placeholder="Additional notes"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newMaterials = [
+                          ...form.rawMaterials,
+                          {
+                            id: Date.now(),
+                            materialName: "",
+                            quantity: "",
+                            unit: "",
+                            costPerUnit: "",
+                            supplier: "",
+                            notes: "",
+                            usedInProcessStep: null,
+                          },
+                        ];
+                        updateField("rawMaterials", newMaterials);
+                      }}
+                      className="mt-2 bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <span>+</span>
+                      <span>Add Another Raw Material</span>
+                    </button>
+                  </div>
+                )}
+
+                {activeTab === "inspectionCheck" && (
+                  <div>
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                        Quality Inspection Checks
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-4">
+                        Define quality control checks to be performed on this item during or after manufacturing.
+                      </p>
+                    </div>
+
+                    {form.inspectionChecks.map((check, index) => (
+                      <div
+                        key={check.id}
+                        className="mb-6 pb-6 border-b border-gray-200 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-4">
+                            <h4 className="text-sm font-medium text-gray-700">
+                              Check {index + 1}
+                            </h4>
+
+                            {/* Check Type Badge */}
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                check.checkType === "visual"
+                                  ? "bg-purple-100 text-purple-700"
+                                  : check.checkType === "measurement"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : check.checkType === "functional"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 text-gray-700"
+                              }`}
+                            >
+                              {check.checkType === "visual" && "👁️ Visual"}
+                              {check.checkType === "measurement" && "📏 Measurement"}
+                              {check.checkType === "functional" && "⚙️ Functional"}
+                              {check.checkType === "other" && "📋 Other"}
+                            </span>
+                          </div>
+
+                          {form.inspectionChecks.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newChecks = form.inspectionChecks.filter(
+                                  (_, i) => i !== index
+                                );
+                                updateField("inspectionChecks", newChecks);
+                              }}
+                              className="text-red-500 hover:text-red-700 text-sm font-medium"
+                            >
+                              Remove Check
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4 mb-3">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Check Name *
+                            </label>
+                            <input
+                              value={check.checkName}
+                              onChange={(e) => {
+                                const newChecks = [...form.inspectionChecks];
+                                newChecks[index].checkName = e.target.value;
+                                updateField("inspectionChecks", newChecks);
+                              }}
+                              placeholder="e.g., Surface Finish Check, Dimension Verification"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Check Type
+                            </label>
+                            <select
+                              value={check.checkType}
+                              onChange={(e) => {
+                                const newChecks = [...form.inspectionChecks];
+                                newChecks[index].checkType = e.target.value;
+                                updateField("inspectionChecks", newChecks);
+                              }}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                            >
+                              <option value="visual">Visual Inspection</option>
+                              <option value="measurement">Measurement</option>
+                              <option value="functional">Functional Test</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Status
+                            </label>
+                            <select
+                              value={check.status}
+                              onChange={(e) => {
+                                const newChecks = [...form.inspectionChecks];
+                                newChecks[index].status = e.target.value;
+                                updateField("inspectionChecks", newChecks);
+                              }}
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="passed">Passed</option>
+                              <option value="failed">Failed</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Description
+                            </label>
+                            <textarea
+                              value={check.description}
+                              onChange={(e) => {
+                                const newChecks = [...form.inspectionChecks];
+                                newChecks[index].description = e.target.value;
+                                updateField("inspectionChecks", newChecks);
+                              }}
+                              placeholder="Detailed description of the inspection check"
+                              rows="2"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1.5">
+                              Acceptance Criteria
+                            </label>
+                            <textarea
+                              value={check.acceptanceCriteria}
+                              onChange={(e) => {
+                                const newChecks = [...form.inspectionChecks];
+                                newChecks[index].acceptanceCriteria = e.target.value;
+                                updateField("inspectionChecks", newChecks);
+                              }}
+                              placeholder="e.g., No visible scratches, Dimensions within ±0.5mm tolerance"
+                              rows="2"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newChecks = [
+                          ...form.inspectionChecks,
+                          {
+                            id: Date.now(),
+                            checkName: "",
+                            description: "",
+                            checkType: "visual",
+                            acceptanceCriteria: "",
+                            status: "pending",
+                          },
+                        ];
+                        updateField("inspectionChecks", newChecks);
+                      }}
+                      className="mt-2 bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <span>+</span>
+                      <span>Add Another Inspection Check</span>
+                    </button>
+                  </div>
+                )}
+
+                {activeTab === "reports" && (
+                  <div>
+                    <div className="mb-6 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-1">
+                          Item Summary Report
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          Complete overview of all item details
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Export report functionality
+                          const reportContent = generateReportHTML();
+                          const printWindow = window.open('', '_blank');
+                          printWindow.document.write(reportContent);
+                          printWindow.document.close();
+                          printWindow.focus();
+                          setTimeout(() => {
+                            printWindow.print();
+                          }, 250);
+                        }}
+                        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                      >
+                        <span>📄</span>
+                        <span>Export Report</span>
+                      </button>
+                    </div>
+
+                    <div id="report-content" className="space-y-6">
+                      {/* Basic Information Section */}
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <h4 className="text-sm font-semibold text-gray-800 mb-3 border-b border-gray-300 pb-2">
+                          📋 Basic Information
+                        </h4>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-600">Item Type</p>
+                            <p className="text-sm font-medium text-gray-900 capitalize">{form.type || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Item Name</p>
+                            <p className="text-sm font-medium text-gray-900">{form.name || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Item Code</p>
+                            <p className="text-sm font-medium text-gray-900">{form.code || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">HSN</p>
+                            <p className="text-sm font-medium text-gray-900">{form.hsn || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Unit</p>
+                            <p className="text-sm font-medium text-gray-900">{form.unit || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Category</p>
+                            <p className="text-sm font-medium text-gray-900 capitalize">{form.category || '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pricing Section */}
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                        <h4 className="text-sm font-semibold text-blue-900 mb-3 border-b border-blue-300 pb-2">
+                          💰 Pricing Details
+                        </h4>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-xs text-blue-700">Sale Price</p>
+                            <p className="text-sm font-medium text-blue-900">₹{form.salePrice || '0'}</p>
+                            <p className="text-xs text-blue-600">{form.salePriceTaxType === 'with' ? 'With Tax' : 'Without Tax'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-blue-700">Purchase Price</p>
+                            <p className="text-sm font-medium text-blue-900">₹{form.purchasePrice || '0'}</p>
+                            <p className="text-xs text-blue-600">{form.purchasePriceTaxType === 'with' ? 'With Tax' : 'Without Tax'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-blue-700">Tax Rate</p>
+                            <p className="text-sm font-medium text-blue-900">{form.taxRate || 'None'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stock Section */}
+                      <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                        <h4 className="text-sm font-semibold text-purple-900 mb-3 border-b border-purple-300 pb-2">
+                          📦 Stock Information
+                        </h4>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-xs text-purple-700">Opening Quantity</p>
+                            <p className="text-sm font-medium text-purple-900">{form.openingQty || '0'} {form.unit || ''}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-purple-700">At Price</p>
+                            <p className="text-sm font-medium text-purple-900">₹{form.atPrice || '0'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-purple-700">As Of Date</p>
+                            <p className="text-sm font-medium text-purple-900">{form.asOfDate || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-purple-700">Minimum Stock</p>
+                            <p className="text-sm font-medium text-purple-900">{form.minStock || '-'} {form.unit || ''}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-purple-700">Location</p>
+                            <p className="text-sm font-medium text-purple-900">{form.location || '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Manufacturing Processes */}
+                      {form.processes && form.processes.length > 0 && form.processes[0].stepName && (
+                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                          <h4 className="text-sm font-semibold text-green-900 mb-3 border-b border-green-300 pb-2">
+                            ⚙️ Manufacturing Process Steps ({form.processes.filter(p => p.stepName).length})
+                          </h4>
+                          <div className="space-y-3">
+                            {form.processes.filter(p => p.stepName).map((process, index) => (
+                              <div key={process.id} className="bg-white p-3 rounded border border-green-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs font-semibold text-green-800">Step {index + 1}:</span>
+                                  <span className="text-sm font-medium text-gray-900">{process.stepName}</span>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    process.stepType === 'testing' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {process.stepType === 'testing' ? '🧪 Testing' : '⚙️ Execution'}
+                                  </span>
+                                </div>
+                                {process.description && (
+                                  <p className="text-xs text-gray-600 ml-4">{process.description}</p>
+                                )}
+                                {process.subSteps && process.subSteps.length > 0 && (
+                                  <div className="ml-4 mt-2 space-y-1">
+                                    {process.subSteps.map((subStep, idx) => (
+                                      <div key={subStep.id} className="text-xs text-gray-700">
+                                        • {subStep.name} {subStep.description && `- ${subStep.description}`}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Raw Materials */}
+                      {form.rawMaterials && form.rawMaterials.length > 0 && form.rawMaterials[0].materialName && (
+                        <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                          <h4 className="text-sm font-semibold text-amber-900 mb-3 border-b border-amber-300 pb-2">
+                            📦 Raw Materials Required ({form.rawMaterials.filter(m => m.materialName).length})
+                          </h4>
+                          <div className="space-y-2">
+                            {form.rawMaterials.filter(m => m.materialName).map((material, index) => (
+                              <div key={material.id} className="bg-white p-3 rounded border border-amber-200 grid grid-cols-5 gap-3 text-xs">
+                                <div>
+                                  <p className="text-amber-700 font-medium">Material</p>
+                                  <p className="text-gray-900">{material.materialName}</p>
+                                </div>
+                                <div>
+                                  <p className="text-amber-700 font-medium">Quantity</p>
+                                  <p className="text-gray-900">{material.quantity || '-'} {material.unit || ''}</p>
+                                </div>
+                                <div>
+                                  <p className="text-amber-700 font-medium">Cost/Unit</p>
+                                  <p className="text-gray-900">₹{material.costPerUnit || '0'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-amber-700 font-medium">Supplier</p>
+                                  <p className="text-gray-900">{material.supplier || '-'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-amber-700 font-medium">Used in Step</p>
+                                  <p className="text-gray-900">
+                                    {material.usedInProcessStep 
+                                      ? `Step ${form.processes.findIndex(p => p.id === material.usedInProcessStep) + 1}`
+                                      : 'Not linked'}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Inspection Checks */}
+                      {form.inspectionChecks && form.inspectionChecks.length > 0 && form.inspectionChecks[0].checkName && (
+                        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                          <h4 className="text-sm font-semibold text-red-900 mb-3 border-b border-red-300 pb-2">
+                            ✓ Quality Inspection Checks ({form.inspectionChecks.filter(c => c.checkName).length})
+                          </h4>
+                          <div className="space-y-2">
+                            {form.inspectionChecks.filter(c => c.checkName).map((check, index) => (
+                              <div key={check.id} className="bg-white p-3 rounded border border-red-200">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs font-semibold text-red-800">Check {index + 1}:</span>
+                                  <span className="text-sm font-medium text-gray-900">{check.checkName}</span>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    check.checkType === 'visual' ? 'bg-purple-100 text-purple-700' :
+                                    check.checkType === 'measurement' ? 'bg-blue-100 text-blue-700' :
+                                    check.checkType === 'functional' ? 'bg-green-100 text-green-700' :
+                                    'bg-gray-100 text-gray-700'
+                                  }`}>
+                                    {check.checkType}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    check.status === 'passed' ? 'bg-green-100 text-green-700' :
+                                    check.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                    'bg-yellow-100 text-yellow-700'
+                                  }`}>
+                                    {check.status}
+                                  </span>
+                                </div>
+                                {check.description && (
+                                  <p className="text-xs text-gray-600 mt-1">{check.description}</p>
+                                )}
+                                {check.acceptanceCriteria && (
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    <span className="font-medium">Criteria:</span> {check.acceptanceCriteria}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
