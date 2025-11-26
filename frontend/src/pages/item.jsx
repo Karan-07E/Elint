@@ -33,7 +33,7 @@ const defaultForm = () => ({
       id: 1,
       stepName: "",
       description: "",
-      details: "",
+      subSteps: [],
       stepType: "execution",
       status: "pending",
     },
@@ -260,6 +260,23 @@ export default function ItemPage() {
     );
   };
 
+  const handleSubStepCheckboxChange = (processId, subStepId) => {
+    setProgressProcesses(prevProcesses =>
+      prevProcesses.map(process => {
+        if (process.id === processId) {
+          const updatedSubSteps = (process.subSteps || []).map(subStep => {
+            if (subStep.id === subStepId && subStep.status !== 'completed') {
+              return { ...subStep, status: 'completed' };
+            }
+            return subStep;
+          });
+          return { ...process, subSteps: updatedSubSteps };
+        }
+        return process;
+      })
+    );
+  };
+
   const handleSaveProgress = async () => {
     if (!selectedItem) return;
     
@@ -451,9 +468,48 @@ export default function ItemPage() {
                               {process.description && (
                                 <p className="text-sm text-gray-600 mb-2">{process.description}</p>
                               )}
-                              {process.details && (
-                                <div className="text-sm text-gray-700 bg-white p-3 rounded border border-gray-200">
-                                  <pre className="whitespace-pre-wrap font-sans">{process.details}</pre>
+                              {process.subSteps && process.subSteps.length > 0 && (
+                                <div className="mt-3 space-y-2">
+                                  <p className="text-xs font-medium text-gray-500 uppercase">Sub-Steps:</p>
+                                  {process.subSteps.map((subStep, idx) => (
+                                    <div 
+                                      key={subStep.id || idx} 
+                                      className={`text-sm p-3 rounded border flex items-start gap-3 ${
+                                        subStep.status === 'completed'
+                                          ? 'bg-green-50 border-green-200'
+                                          : 'bg-white border-gray-200'
+                                      }`}
+                                    >
+                                      {userRole === 'product team' && (
+                                        <div className="flex-shrink-0 mt-0.5">
+                                          <input
+                                            type="checkbox"
+                                            checked={subStep.status === 'completed'}
+                                            onChange={() => handleSubStepCheckboxChange(process.id, subStep.id)}
+                                            disabled={subStep.status === 'completed'}
+                                            className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <div className="font-medium text-gray-800">{idx + 1}. {subStep.name}</div>
+                                          <span
+                                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                              subStep.status === 'completed'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            {subStep.status === 'completed' ? '✓ Done' : '⏳ Pending'}
+                                          </span>
+                                        </div>
+                                        {subStep.description && (
+                                          <div className="text-gray-600 mt-1">{subStep.description}</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -519,12 +575,14 @@ export default function ItemPage() {
                 ) : items.length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-gray-500 mb-4">No items found</p>
-                    <button
-                      onClick={handleAddItem}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-medium transition-colors"
-                    >
-                      Add Your First Item
-                    </button>
+                    {userRole !== 'product team' && (
+                      <button
+                        onClick={handleAddItem}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-medium transition-colors"
+                      >
+                        Add Your First Item
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1120,19 +1178,68 @@ export default function ItemPage() {
 
                         <div>
                           <label className="block text-sm text-gray-600 mb-1.5">
-                            Process Details
+                            Sub-Steps
                           </label>
-                          <textarea
-                            value={process.details}
-                            onChange={(e) => {
-                              const newProcesses = [...form.processes];
-                              newProcesses[index].details = e.target.value;
-                              updateField("processes", newProcesses);
-                            }}
-                            placeholder="Enter detailed specifications:&#10;• Amount of paint: 2 liters&#10;• Color: Red (RAL 3020)&#10;• Weight: 5 kg&#10;• Dimensions: 100x50x30 cm&#10;• Temperature: 200°C&#10;• Duration: 2 hours&#10;• Other specifications..."
-                            rows="5"
-                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
-                          />
+                          <div className="space-y-2">
+                            {(process.subSteps || []).map((subStep, subIndex) => (
+                              <div key={subStep.id} className="flex gap-2 items-start bg-gray-50 p-3 rounded border border-gray-200">
+                                <div className="flex-1 space-y-2">
+                                  <input
+                                    value={subStep.name}
+                                    onChange={(e) => {
+                                      const newProcesses = [...form.processes];
+                                      newProcesses[index].subSteps[subIndex].name = e.target.value;
+                                      updateField("processes", newProcesses);
+                                    }}
+                                    placeholder="Sub-step name (e.g., Apply primer, Mix materials)"
+                                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  />
+                                  <input
+                                    value={subStep.description}
+                                    onChange={(e) => {
+                                      const newProcesses = [...form.processes];
+                                      newProcesses[index].subSteps[subIndex].description = e.target.value;
+                                      updateField("processes", newProcesses);
+                                    }}
+                                    placeholder="Details (e.g., Amount: 2L, Color: Red, Temp: 200°C)"
+                                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newProcesses = [...form.processes];
+                                    newProcesses[index].subSteps = newProcesses[index].subSteps.filter((_, i) => i !== subIndex);
+                                    updateField("processes", newProcesses);
+                                  }}
+                                  className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors"
+                                  title="Remove sub-step"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newProcesses = [...form.processes];
+                                if (!newProcesses[index].subSteps) {
+                                  newProcesses[index].subSteps = [];
+                                }
+                                newProcesses[index].subSteps.push({
+                                  id: Date.now(),
+                                  name: "",
+                                  description: "",
+                                  status: "pending"
+                                });
+                                updateField("processes", newProcesses);
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                            >
+                              <span>+</span>
+                              <span>Add Sub-Step</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1146,7 +1253,7 @@ export default function ItemPage() {
                             id: Date.now(),
                             stepName: "",
                             description: "",
-                            details: "",
+                            subSteps: [],
                             stepType: "execution",
                             status: "pending",
                           },

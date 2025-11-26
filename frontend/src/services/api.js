@@ -9,7 +9,7 @@ const api = axios.create({
   },
 });
 
-// current user verifier for each request
+// Current user verifier for each request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -29,6 +29,11 @@ export const getOrdersInProgressChart = (period = 'month') => api.get(`/dashboar
 export const getOrdersInQueueChart = (period = 'month') => api.get(`/dashboard/orders-in-queue-chart?period=${period}`);
 export const getRecentTransactions = () => api.get('/dashboard/recent-transactions');
 
+// Dashboard APIs
+// export const getDashboardSummary = () => api.get('/dashboard/summary');
+export const getOrderChartData = (period = 'month') => api.get(`/dashboard/charts/orders?period=${period}`); // ✅ NEW
+// export const getRecentTransactions = () => api.get('/dashboard/recent-transactions');
+
 // Party APIs
 export const getAllParties = (type = '') => api.get(`/parties${type ? `?type=${type}` : ''}`);
 export const getPartyById = (id) => api.get(`/parties/${id}`);
@@ -42,7 +47,7 @@ export const getItemById = (id) => api.get(`/items/${id}`);
 export const createItem = (data) => api.post('/items', data);
 export const updateItem = (id, data) => api.put(`/items/${id}`, data);
 export const deleteItem = (id) => api.delete(`/items/${id}`);
-export const getItemTransactions = (id) => api.get(`/items/${id}/transactions`); // <-- NEW
+export const getItemTransactions = (id) => api.get(`/items/${id}/transactions`);
 
 // Sale APIs
 export const getAllSales = () => api.get('/sales');
@@ -70,9 +75,11 @@ export const getAllOrders = (status = '') => api.get(`/orders${status ? `?status
 export const getOrderById = (id) => api.get(`/orders/${id}`);
 export const createOrder = (data) => api.post('/orders', data);
 export const updateOrder = (id, data) => api.put(`/orders/${id}`, data);
-export const updateOrderStatus = (id, status) => api.patch(`/orders/${id}/status`, { status });
+export const updateOrderStatus = (id, status, note = '') => api.patch(`/orders/${id}/status`, { status, note });
 export const deleteOrder = (id) => api.delete(`/orders/${id}`);
 export const getOrderStats = () => api.get('/orders/stats/summary');
+export const getOrderFlowStats = () => api.get('/orders/stats/flow');
+export const getOrderTree = (search = '') => api.get(`/orders/tree${search ? `?search=${search}` : ''}`);
 export const searchOrders = (params = {}) => api.get('/orders', { params });
 
 export default api;

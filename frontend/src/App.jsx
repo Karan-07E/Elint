@@ -8,6 +8,9 @@ import SaleInvoice from "./pages/SaleInvoice.jsx"; // <-- Add this import
 import Purchase from "./pages/Purchase.jsx";           // <-- NEW
 import PurchaseBill from "./pages/PurchaseBill.jsx"; // <-- NEW
 import PartiesPage from "./pages/Parties.jsx";
+import Settings from "./pages/Settings.jsx";
+import OrderDashboard from "./pages/OrderDashboard.jsx";
+import CreateOrder from "./pages/CreateOrder.jsx"; // Import the new page
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -49,7 +52,7 @@ function App() {
     };
   }, []);
 
-  return (
+  return ( 
     <Router>
       <Routes>
         {/* Protected Home Page */}
@@ -99,6 +102,7 @@ function App() {
             isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Login />
           }
         />
+        
 
         {/* Signup Page */}
         <Route
@@ -140,8 +144,29 @@ function App() {
           }
         />
 
+        {/* Settings Page */}
+        <Route
+          path="/settings"
+          element={
+            isAuthenticated ? <Settings /> : <Navigate to="/login" replace />
+          }
+        />
+        {/* Order Dashboard */}
+        <Route 
+          path="/orders" 
+          element={isAuthenticated ? <OrderDashboard /> : <Navigate to="/login" />} 
+        />
+        
+        {/* Create Order Page - NEW ROUTE */}
+        <Route 
+          path="/orders/new" 
+          element={isAuthenticated ? <CreateOrder /> : <Navigate to="/login" />} 
+        />
+
         {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
+        
+        
       </Routes>
     </Router>
   );

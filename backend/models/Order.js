@@ -1,75 +1,62 @@
 const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
-  orderNumber: {
-    type: String,
-    required: true,
-    unique: true
-  },
+  // Linking to Party (Customer)
   party: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Party',
     required: true
   },
-  items: [{
-    item: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Item',
-      required: true
-    },
-    quantity: {
-      type: Number,
-      required: true
-    },
-    rate: {
-      type: Number,
-      required: true
-    },
-    amount: {
-      type: Number,
-      required: true
-    }
-  }],
-  totalAmount: {
-    type: Number,
-    required: true
-  },
+  
+  // Order Details
+  poNumber: { type: String, required: true, trim: true },
+  poDate: { type: Date, default: Date.now },
+  estimatedDeliveryDate: { type: Date },
+  
+  // Flow Stages
   status: {
     type: String,
-    enum: ['queue', 'in_progress', 'completed', 'cancelled'],
-    default: 'queue'
+    enum: [
+      'New', 
+      'Verified', 
+      'Manufacturing', 
+      'Quality_Check', 
+      'Documentation', 
+      'Dispatch', 
+      'Completed', 
+      'Deleted'
+    ],
+    default: 'New'
   },
+
+  // ✅ NEW: Track history of status changes and notes
+  statusHistory: [{
+    status: String,
+    note: String,
+    timestamp: { type: Date, default: Date.now }
+  }],
+
   priority: {
     type: String,
-    enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
+    enum: ['Normal', 'High'],
+    default: 'Normal'
   },
-  orderDate: {
-    type: Date,
-    default: Date.now
-  },
-  startedDate: {
-    type: Date
-  },
-  completedDate: {
-    type: Date
-  },
-  estimatedCompletionDate: {
-    type: Date
-  },
-  notes: {
-    type: String,
-    trim: true
-  },
-  assignedTo: {
-    type: String,
-    trim: true
-  }
+
+  // Items in the order
+  items: [{
+    item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item' },
+    itemName: String, 
+    quantity: Number,
+    unit: String,
+    rate: Number,
+    amount: Number,
+    deliveryDate: { type: Date }
+  }],
+
+  totalAmount: { type: Number, default: 0 },
+  notes: { type: String } // General remarks
 }, {
   timestamps: true
 });
-
-// Index for faster queries
-orderSchema.index({ status: 1, orderDate: -1 });
 
 module.exports = mongoose.model('Order', orderSchema);

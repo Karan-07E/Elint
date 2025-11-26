@@ -1,5 +1,25 @@
 const mongoose = require('mongoose');
 
+const subStepSchema = new mongoose.Schema({
+  id: {
+    type: Number,
+    required: true
+  },
+  name: {
+    type: String,
+    trim: true
+  },
+  description: {
+    type: String,
+    trim: true
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'completed'],
+    default: 'pending'
+  }
+}, { _id: false });
+
 const processStepSchema = new mongoose.Schema({
   id: {
     type: Number,
@@ -13,10 +33,7 @@ const processStepSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  details: {
-    type: String,
-    trim: true
-  },
+  subSteps: [subStepSchema],
   stepType: {
     type: String,
     enum: ['execution', 'testing'],
