@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import { getAllParties, getAllItems, createSale } from '../services/api';
 import { BiGridVertical } from 'react-icons/bi';
 import { FaTrashAlt } from 'react-icons/fa';
+import { canCreate } from '../utils/permissions';
 
 // Helper function to get a new blank item row
 const createNewItemRow = () => ({
@@ -630,13 +631,15 @@ const SaleInvoice = () => {
             <button className="px-5 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50">
               ...
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="px-8 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : 'Save'}
-            </button>
+            {canCreate('sales') && (
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="px-8 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save'}
+              </button>
+            )}
           </div>
         </div>
 

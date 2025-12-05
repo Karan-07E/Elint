@@ -4,9 +4,14 @@ const router = express.Router();
 const Item = require('../models/Item');
 const Sale = require('../models/Sale');
 const Purchase = require('../models/Purchase');
+const authenticateToken = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permissions');
+
+// Apply authentication to all routes
+router.use(authenticateToken);
 
 // Get all items
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('viewItems'), async (req, res) => {
   try {
     // Exclude image field from list to reduce payload size and improve performance
     const items = await Item.find().select('-image').sort({ createdAt: -1 }).lean();
@@ -17,7 +22,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single item
-router.get('/:id', async (req, res) => {
+router.get('/:id', checkPermission('viewItems'), async (req, res) => {
   try {
     const item = await Item.findById(req.params.id).lean();
     if (!item) {
@@ -30,7 +35,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Get all transactions for a specific item
-router.get('/:id/transactions', async (req, res) => {
+router.get('/:id/transactions', checkPermission('viewItems'), async (req, res) => {
   try {
     const itemId = req.params.id;
     const item = await Item.findById(itemId);
@@ -101,7 +106,7 @@ router.get('/:id/transactions', async (req, res) => {
 });
 
 // Create item
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('createItems'), async (req, res) => {
   try {
     console.log('Received item data:', JSON.stringify(req.body, null, 2));
     const item = new Item(req.body);
@@ -115,7 +120,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update item
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('editItems'), async (req, res) => {
   try {
     const item = await Item.findById(req.params.id);
     if (!item) {
@@ -132,7 +137,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete item
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('deleteItems'), async (req, res) => {
   try {
     const item = await Item.findById(req.params.id);
     if (!item) {

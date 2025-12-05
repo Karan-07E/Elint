@@ -5,9 +5,14 @@ const Purchase = require('../models/Purchase');
 const Party = require('../models/Party');
 const Item = require('../models/Item');
 const Transaction = require('../models/Transaction');
+const authenticateToken = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permissions');
+
+// Apply authentication to all routes
+router.use(authenticateToken);
 
 // Get all purchases
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('viewPurchases'), async (req, res) => {
   try {
     const purchases = await Purchase.find()
       .populate('party', 'name phone')
@@ -20,7 +25,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single purchase
-router.get('/:id', async (req, res) => {
+router.get('/:id', checkPermission('viewPurchases'), async (req, res) => {
   try {
     const purchase = await Purchase.findById(req.params.id)
       .populate('party')
@@ -35,7 +40,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create purchase - WITH TRANSACTION SUPPORT
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('createPurchases'), async (req, res) => {
   try {
     const purchase = new Purchase(req.body);
     const newPurchase = await purchase.save();
@@ -97,7 +102,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update purchase - WITH STOCK REVERSAL LOGIC
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('editPurchases'), async (req, res) => {
   try {
     const oldPurchase = await Purchase.findById(req.params.id);
     if (!oldPurchase) {
@@ -154,7 +159,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete purchase - WITH STOCK AND BALANCE REVERSAL
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('deletePurchases'), async (req, res) => {
   try {
     const purchase = await Purchase.findById(req.params.id);
     if (!purchase) {

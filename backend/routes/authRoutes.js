@@ -20,53 +20,6 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// ✅ SIGNUP
-router.post('/signup', async (req, res) => {
-  try {
-    const { name, email, password, role } = req.body;
-
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-
-    // check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    // hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // create user
-    const newUser = new User({ name, email, password: hashedPassword, role });
-    await newUser.save();
-
-    // generate JWT token
-    const token = jwt.sign(
-      { userId: newUser._id, email: newUser.email, role: newUser.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.status(201).json({ 
-      message: 'User registered successfully', 
-      token,
-      user: { 
-        id: newUser._id, 
-        name: newUser.name, 
-        email: newUser.email, 
-        role: newUser.role,
-        profilePhoto: newUser.profilePhoto || '',
-        themePreference: newUser.themePreference || 'light'
-      }
-    });
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ message: 'Server error during signup' });
-  }
-});
-
 // ✅ LOGIN
 router.post('/login', async (req, res) => {
   try {
@@ -104,7 +57,8 @@ router.post('/login', async (req, res) => {
         email: user.email, 
         role: user.role,
         profilePhoto: user.profilePhoto || '',
-        themePreference: user.themePreference || 'light'
+        themePreference: user.themePreference || 'light',
+        permissions: user.permissions
       }
     });
   } catch (error) {
@@ -180,7 +134,8 @@ router.put('/profile', authenticateToken, async (req, res) => {
         email: user.email, 
         role: user.role,
         profilePhoto: user.profilePhoto,
-        themePreference: user.themePreference
+        themePreference: user.themePreference,
+        permissions: user.permissions
       }
     });
   } catch (error) {

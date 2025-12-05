@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import { canEdit } from '../utils/permissions';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -342,15 +343,17 @@ const Settings = () => {
                   </div>
 
                   {/* Save Button */}
-                  <div className="pt-4 border-t border-gray-200">
-                    <button
-                      onClick={handleSaveProfile}
-                      disabled={loading}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  </div>
+                  {canEdit('settings') && (
+                    <div className="pt-4 border-t border-gray-200">
+                      <button
+                        onClick={handleSaveProfile}
+                        disabled={loading}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 // Change Password Tab
