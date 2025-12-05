@@ -575,7 +575,7 @@ export default function ManageTeams() {
                   setSelectedUser(null);
                 }
               }}
-            ></div>
+            ></div> 
 
             {/* Modal Content */}
             <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
