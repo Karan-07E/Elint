@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { getAllParties, createParty, getAllItems, createOrder, searchOrders } from '../services/api';
+import { canCreate, canEdit, canDelete } from '../utils/permissions';
 
 const initialPartyState = {
   name: '',
@@ -527,13 +528,15 @@ const PartiesPage = () => {
             />
           </div>
           <div className="flex items-center gap-3">
-            <button
-              className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-full"
-              onClick={() => setIsModalOpen(true)}
-            >
-              <span className="text-lg">＋</span>
-              <span>Add Party</span>
-            </button>
+            {canCreate('parties') && (
+              <button
+                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-full"
+                onClick={() => setIsModalOpen(true)}
+              >
+                <span className="text-lg">＋</span>
+                <span>Add Party</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -545,12 +548,14 @@ const PartiesPage = () => {
               <div>
                 <h3 className="text-sm font-semibold text-slate-800">Parties</h3>
               </div>
-              <button
-                className="text-xs text-blue-500 border border-blue-500 rounded-full px-3 py-1 hover:bg-blue-50"
-                onClick={() => setIsModalOpen(true)}
-              >
-                + Add Party
-              </button>
+              {canCreate('parties') && (
+                <button
+                  className="text-xs text-blue-500 border border-blue-500 rounded-full px-3 py-1 hover:bg-blue-50"
+                  onClick={() => setIsModalOpen(true)}
+                >
+                  + Add Party
+                </button>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto">

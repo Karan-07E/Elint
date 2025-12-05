@@ -1,9 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const Party = require('../models/Party');
+const authenticateToken = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permissions');
+
+// Apply authentication to all routes
+router.use(authenticateToken);
 
 // Get all parties
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('viewParties'), async (req, res) => {
   try {
     const { type } = req.query;
     const filter = type ? { type } : {};
@@ -15,7 +20,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single party
-router.get('/:id', async (req, res) => {
+router.get('/:id', checkPermission('viewParties'), async (req, res) => {
   try {
     const party = await Party.findById(req.params.id);
     if (!party) {
@@ -28,7 +33,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create party
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('createParties'), async (req, res) => {
   try {
     const party = new Party({
       ...req.body,
@@ -42,7 +47,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update party
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('editParties'), async (req, res) => {
   try {
     const party = await Party.findById(req.params.id);
     if (!party) {
@@ -58,7 +63,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete party
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('deleteParties'), async (req, res) => {
   try {
     const party = await Party.findById(req.params.id);
     if (!party) {

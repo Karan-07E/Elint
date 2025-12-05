@@ -4,9 +4,14 @@ const Sale = require('../models/Sale');
 const Party = require('../models/Party');
 const Item = require('../models/Item');
 const Transaction = require('../models/Transaction');
+const authenticateToken = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permissions');
+
+// Apply authentication to all routes
+router.use(authenticateToken);
 
 // Get all sales
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('viewSales'), async (req, res) => {
   try {
     const sales = await Sale.find()
       .populate('party', 'name phone')
@@ -19,7 +24,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single sale
-router.get('/:id', async (req, res) => {
+router.get('/:id', checkPermission('viewSales'), async (req, res) => {
   try {
     const sale = await Sale.findById(req.params.id)
       .populate('party')
@@ -34,7 +39,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create sale - REVISED LOGIC
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('createSales'), async (req, res) => {
   try {
     const sale = new Sale(req.body);
     const newSale = await sale.save();
@@ -96,7 +101,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update sale
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('editSales'), async (req, res) => {
   try {
     const sale = await Sale.findById(req.params.id);
     if (!sale) {
@@ -115,7 +120,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete sale
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('deleteSales'), async (req, res) => {
   try {
     const sale = await Sale.findById(req.params.id);
     if (!sale) {
