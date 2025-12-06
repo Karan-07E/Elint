@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login.jsx";
-import Signup from "./pages/Signup.jsx";
 import Home from "./pages/Home.jsx";
 import ItemPage from "./pages/item.jsx";
-import SaleInvoice from "./pages/SaleInvoice.jsx"; // <-- Add this import
-import Purchase from "./pages/Purchase.jsx";           // <-- NEW
-import PurchaseBill from "./pages/PurchaseBill.jsx"; // <-- NEW
+import SaleInvoice from "./pages/SaleInvoice.jsx";
+import Purchase from "./pages/Purchase.jsx";
+import PurchaseBill from "./pages/PurchaseBill.jsx";
 import PartiesPage from "./pages/Parties.jsx";
 import Settings from "./pages/Settings.jsx";
 import OrderDashboard from "./pages/OrderDashboard.jsx";
 import CreateOrder from "./pages/CreateOrder.jsx"; // Import the new page
+import ManageTeams from "./pages/ManageTeams.jsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -104,14 +104,6 @@ function App() {
         />
         
 
-        {/* Signup Page */}
-        <Route
-          path="/signup"
-          element={
-            isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Signup />
-          }
-        />
-
         {/* Items Page */}
         <Route
           path="/items"
@@ -141,6 +133,14 @@ function App() {
           path="/purchase/new"
           element={
             isAuthenticated ? <PurchaseBill /> : <Navigate to="/login" replace />
+          }
+        />
+
+        {/* Manage Teams Page */}
+        <Route
+          path="/manage-teams"
+          element={
+            isAuthenticated ? <ManageTeams /> : <Navigate to="/login" replace />
           }
         />
 

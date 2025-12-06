@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createItem, getItemById, updateItem, getAllItems, deleteItem } from "../services/api";
 import Sidebar from "../components/Sidebar";
+import { canCreate, canEdit, canDelete, canExportReports } from "../utils/permissions";
 
 const defaultForm = () => ({
   type: "product",
@@ -933,7 +934,7 @@ export default function ItemPage() {
             <div className="bg-white rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-800">Items</h2>
-                {userRole !== 'product team' && (
+                {canCreate('items') && (
                   <button
                     onClick={handleAddItem}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2"
@@ -1011,18 +1012,22 @@ export default function ItemPage() {
                                   </button>
                                 ) : (
                                   <>
-                                    <button
-                                      onClick={() => handleEditItem(item)}
-                                      className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteItem(item._id)}
-                                      className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
-                                    >
-                                      Delete
-                                    </button>
+                                    {canEdit('items') && (
+                                      <button
+                                        onClick={() => handleEditItem(item)}
+                                        className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                      >
+                                        Edit
+                                      </button>
+                                    )}
+                                    {canDelete('items') && (
+                                      <button
+                                        onClick={() => handleDeleteItem(item._id)}
+                                        className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                      >
+                                        Delete
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -2088,24 +2093,26 @@ export default function ItemPage() {
                           Complete overview of all item details
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Export report functionality
-                          const reportContent = generateReportHTML();
-                          const printWindow = window.open('', '_blank');
-                          printWindow.document.write(reportContent);
-                          printWindow.document.close();
-                          printWindow.focus();
-                          setTimeout(() => {
-                            printWindow.print();
-                          }, 250);
-                        }}
-                        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors flex items-center gap-2"
-                      >
-                        <span>📄</span>
-                        <span>Export Report</span>
-                      </button>
+                      {canExportReports() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Export report functionality
+                            const reportContent = generateReportHTML();
+                            const printWindow = window.open('', '_blank');
+                            printWindow.document.write(reportContent);
+                            printWindow.document.close();
+                            printWindow.focus();
+                            setTimeout(() => {
+                              printWindow.print();
+                            }, 250);
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                        >
+                          <span>📄</span>
+                          <span>Export Report</span>
+                        </button>
+                      )}
                     </div>
 
                     <div id="report-content" className="space-y-6">
