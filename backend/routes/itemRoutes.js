@@ -8,7 +8,8 @@ const Purchase = require('../models/Purchase');
 // Get all items
 router.get('/', async (req, res) => {
   try {
-    const items = await Item.find().sort({ createdAt: -1 });
+    // Exclude image field from list to reduce payload size and improve performance
+    const items = await Item.find().select('-image').sort({ createdAt: -1 }).lean();
     res.json(items);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -18,7 +19,7 @@ router.get('/', async (req, res) => {
 // Get single item
 router.get('/:id', async (req, res) => {
   try {
-    const item = await Item.findById(req.params.id);
+    const item = await Item.findById(req.params.id).lean();
     if (!item) {
       return res.status(404).json({ message: 'Item not found' });
     }
