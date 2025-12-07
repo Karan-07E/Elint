@@ -16,7 +16,8 @@ import {
   LuSearch,
   LuChevronRight,
   LuChevronDown,
-  LuUsers
+  LuUsers,
+  LuCalendarDays
 } from "react-icons/lu";
 import { hasPermission } from '../utils/permissions';
 
@@ -124,6 +125,15 @@ const Sidebar = () => {
           permission: 'viewReports' 
         },
 
+        // Manage Teams for Accounts Team
+        {
+          path: '/accounts/manage-teams',
+          icon: <LuUsers size={18} />,
+          label: 'Manage Teams',
+          roles: ['accounts team'],
+          permission: null
+        },
+
         // Inventory
         { 
           path: '/items', // Reusing items path as Inventory usually maps to Items in simple ERPs
@@ -140,17 +150,35 @@ const Sidebar = () => {
       path: '/orders', 
       icon: <LuClipboardList size={20} />, 
       label: 'Orders', 
-      roles: ['user', 'admin', 'product team', 'product employee'], 
+      roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'], 
       permission: null 
     },
 
-    // 5. Settings
+    // 5. Order Calendar
+    {
+      path: '/calendar',
+      icon: <LuCalendarDays size={20} />,
+      label: 'Calendar',
+      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'],
+      permission: null
+    },
+
+    // 6. Settings
     { 
       path: '/settings', 
       icon: <LuSettings size={20} />, 
       label: 'Settings', 
       roles: ['user', 'admin'], 
       permission: 'viewSettings' 
+    },
+
+    // 7. Manage Teams for Accounts Team (top-level)
+    { 
+      path: '/accounts/manage-teams', 
+      icon: <LuUsers size={20} />, 
+      label: 'Manage Teams', 
+      roles: ['accounts team'], 
+      permission: null 
     },
 
     // Admin Only: Manage Teams
