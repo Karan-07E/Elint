@@ -79,6 +79,20 @@ const AccountsTeamManage = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  
+  // Auto-select first employee when employees are loaded
+  useEffect(() => {
+    if (employees.length > 0 && !selectedEmployee) {
+      setSelectedEmployee(employees[0]);
+    }
+  }, [employees, selectedEmployee]);
+
+  // Auto-select first employee when employees are loaded
+  useEffect(() => {
+    if (employees.length > 0 && !selectedEmployee) {
+      setSelectedEmployee(employees[0]);
+    }
+  }, [employees, selectedEmployee]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -146,34 +160,44 @@ const AccountsTeamManage = () => {
           )}
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center h-[60vh]">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-          </div>
-        ) : error ? (
+        {error ? (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">
             {error}
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 p-4 h-[calc(100vh-180px)]">
             {/* Left: Unassigned Orders */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col max-h-[calc(100vh-150px)]">
-              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-800">Unassigned Orders</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden transition-all duration-200 hover:shadow-md">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-50">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-800">Unassigned Orders</h2>
+                    <p className="text-xs text-slate-500">Orders waiting to be assigned</p>
+                  </div>
                 </div>
-                <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600 font-medium">
-                  {orders.length} orders
+                <span className="text-sm px-3 py-1.5 rounded-full bg-white text-blue-700 font-medium border border-blue-100 shadow-sm">
+                  {orders.length} {orders.length === 1 ? 'order' : 'orders'}
                 </span>
               </div>
 
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden flex flex-col">
                 {/* List view */}
                 {!selectedOrder && (
-                  <div className="h-full overflow-y-auto bg-slate-50/60 border-t border-slate-100">
+                  <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-slate-50">
                     {orders.length === 0 ? (
-                      <div className="p-6 text-xs text-slate-400 text-center">
-                        No unassigned orders.
+                      <div className="flex flex-col items-center justify-center p-8 text-center">
+                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                        </div>
+                        <h3 className="text-base font-medium text-slate-700 mb-1">No unassigned orders</h3>
+                        <p className="text-sm text-slate-500 max-w-xs">All orders have been assigned to team members.</p>
                       </div>
                     ) : (
                       <ul className="divide-y divide-slate-100">
@@ -185,26 +209,37 @@ const AccountsTeamManage = () => {
                             : 'Item';
 
                           return (
-                            <li key={order._id}>
+                            <li key={order._id} className="border-b border-slate-100 last:border-0">
                               <button
                                 type="button"
                                 onClick={() => setSelectedOrder(order)}
-                                className="w-full text-left px-4 py-3 flex flex-col gap-1 hover:bg-slate-50 transition-colors"
+                                className="w-full text-left px-5 py-3.5 flex flex-col gap-1.5 hover:bg-blue-50/50 transition-all duration-150 group"
                               >
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs font-semibold text-slate-700 truncate">
-                                    {firstItemName}
-                                  </span>
-                                  <span className="text-[10px] text-slate-400">
-                                    {deadline ? deadline.toLocaleDateString() : '-'}
-                                  </span>
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-800 truncate group-hover:text-blue-700">
+                                      {firstItemName}
+                                    </p>
+                                    <div className="flex items-center mt-1 space-x-2">
+                                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                                        PO: {order.poNumber || 'N/A'}
+                                      </span>
+                                      <span className="text-xs text-slate-400">
+                                        {customer}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col items-end ml-2">
+                                    <span className="text-xs font-medium text-slate-500">
+                                      {deadline ? deadline.toLocaleDateString() : '-'}
+                                    </span>
+                                    {deadline && new Date(deadline) < new Date() && (
+                                      <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full mt-1">
+                                        Overdue
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                <p className="text-xs text-slate-500 truncate">
-                                  PO: {order.poNumber || 'N/A'}
-                                </p>
-                                <p className="text-[11px] text-slate-500 truncate">
-                                  {customer}
-                                </p>
                               </button>
                             </li>
                           );
@@ -224,7 +259,7 @@ const AccountsTeamManage = () => {
                           <button
                             type="button"
                             onClick={() => setSelectedOrder(null)}
-                            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-sky-500 text-white shadow-md hover:shadow-lg hover:from-blue-600 hover:to-sky-600 transition-transform transform hover:-translate-y-0.5"
+                            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/0 text-blue-600 shadow-sm hover:shadow-md hover:bg-blue-50/50 transition-transform transform hover:-translate-y-0.5 border border-blue-100"
                             title="Back to orders"
                           >
                             <span className="text-lg leading-none">←</span>
@@ -243,84 +278,92 @@ const AccountsTeamManage = () => {
                         </span>
                       </div>
 
-                      <div className="space-y-3 text-[11px] text-slate-600">
-                        {(() => {
-                          const { start, deadline } = computeOrderDates(selectedOrder);
-                          return (
-                            <>
-                              <div className="flex justify-between gap-6">
-                                <div>
-                                  <p className="text-[10px] uppercase text-slate-400">Start</p>
-                                  <p className="font-medium">{start ? start.toLocaleDateString() : '-'}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-[10px] uppercase text-slate-400">Deadline</p>
-                                  <p className="font-medium">{deadline ? deadline.toLocaleDateString() : '-'}</p>
-                                </div>
-                              </div>
-                              <div className="flex justify-between gap-6">
-                                <div>
-                                  <p className="text-[10px] uppercase text-slate-400">Priority</p>
-                                  <p className="font-medium">
-                                    {selectedOrder.priority || 'Normal'}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-[10px] uppercase text-slate-400">Amount</p>
-                                  <p className="font-semibold text-slate-800">
-                                    ₹{(selectedOrder.totalAmount || 0).toLocaleString()}
-                                  </p>
-                                </div>
-                              </div>
-                            </>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-                        <table className="w-full text-[11px]">
-                          <thead className="bg-slate-100 text-slate-600">
-                            <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Item</th>
-                              <th className="px-3 py-2 text-left font-semibold">Delivery</th>
-                              <th className="px-3 py-2 text-left font-semibold">Qty</th>
-                              <th className="px-3 py-2 text-right font-semibold">Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 bg-white">
-                            {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 ? (
-                              selectedOrder.items.map((item, idx) => (
-                                <tr key={idx}>
-                                  <td className="px-3 py-2 text-slate-700">
-                                    {item.itemName || item.name}
-                                  </td>
-                                  <td className="px-3 py-2 text-slate-500">
-                                    {formatDate(item.deliveryDate)}
-                                  </td>
-                                  <td className="px-3 py-2 text-slate-500">
-                                    {item.quantity} {item.unit}
-                                  </td>
-                                  <td className="px-3 py-2 text-right text-slate-700">
-                                    ₹{item.amount}
-                                  </td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr>
-                                <td colSpan={4} className="px-3 py-3 text-center text-slate-400">
-                                  No items.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {selectedOrder.notes && (
-                        <div className="bg-white rounded-md border border-slate-200 p-3 text-[11px] text-slate-600">
-                          <p className="text-[10px] uppercase text-slate-400 mb-1">Notes</p>
-                          <p>{selectedOrder.notes}</p>
+                      {loading ? (
+                        <div className="flex items-center justify-center h-[calc(100vh-200px)]">
+                          <div className="text-slate-400">Loading team data...</div>
                         </div>
+                      ) : (
+                        <>
+                          <div className="space-y-3 text-[11px] text-slate-600">
+                            {(() => {
+                              const { start, deadline } = computeOrderDates(selectedOrder);
+                              return (
+                                <>
+                                  <div className="flex justify-between gap-6">
+                                    <div>
+                                      <p className="text-[10px] uppercase text-slate-400">Start</p>
+                                      <p className="font-medium">{start ? start.toLocaleDateString() : '-'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[10px] uppercase text-slate-400">Deadline</p>
+                                      <p className="font-medium">{deadline ? deadline.toLocaleDateString() : '-'}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-between gap-6">
+                                    <div>
+                                      <p className="text-[10px] uppercase text-slate-400">Priority</p>
+                                      <p className="font-medium">
+                                        {selectedOrder.priority || 'Normal'}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[10px] uppercase text-slate-400">Amount</p>
+                                      <p className="font-semibold text-slate-800">
+                                        ₹{(selectedOrder.totalAmount || 0).toLocaleString()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
+                            <table className="w-full text-[11px]">
+                              <thead className="bg-slate-100 text-slate-600">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-semibold">Item</th>
+                                  <th className="px-3 py-2 text-left font-semibold">Delivery</th>
+                                  <th className="px-3 py-2 text-left font-semibold">Qty</th>
+                                  <th className="px-3 py-2 text-right font-semibold">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 bg-white">
+                                {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 ? (
+                                  selectedOrder.items.map((item, idx) => (
+                                    <tr key={idx}>
+                                      <td className="px-3 py-2 text-slate-700">
+                                        {item.itemName || item.name}
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-500">
+                                        {formatDate(item.deliveryDate)}
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-500">
+                                        {item.quantity} {item.unit}
+                                      </td>
+                                      <td className="px-3 py-2 text-right text-slate-700">
+                                        ₹{item.amount}
+                                      </td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan={4} className="px-3 py-3 text-center text-slate-400">
+                                      No items.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {selectedOrder.notes && (
+                            <div className="bg-white rounded-md border border-slate-200 p-3 text-[11px] text-slate-600">
+                              <p className="text-[10px] uppercase text-slate-400 mb-1">Notes</p>
+                              <p>{selectedOrder.notes}</p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -329,103 +372,126 @@ const AccountsTeamManage = () => {
             </div>
 
             {/* Right: Accounts Employees */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col max-h-[calc(100vh-150px)]">
-              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-800">Accounts Employees</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden transition-all duration-200 hover:shadow-md">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-green-50 to-green-50">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-800">Accounts Team</h2>
+                    <p className="text-xs text-slate-500">Manage your team members</p>
+                  </div>
                 </div>
-                <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600 font-medium">
-                  {employees.length} employees
+                <span className="text-sm px-3 py-1.5 rounded-full bg-white text-green-700 font-medium border border-green-100 shadow-sm">
+                  {employees.length} {employees.length === 1 ? 'member' : 'members'}
                 </span>
               </div>
 
-              <div className="flex-1 flex divide-x divide-slate-200 overflow-hidden">
+              <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
                 {/* Employee list */}
-                <div className="w-2/5 min-w-[220px] overflow-y-auto">
+                <div className="flex-1 overflow-y-auto">
                   {employees.length === 0 ? (
-                    <div className="p-6 text-xs text-slate-400 text-center">
-                      No accounts employees found.
+                    <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                      <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-base font-medium text-slate-700 mb-1">No team members</h3>
+                      <p className="text-sm text-slate-500 max-w-xs">Add team members to get started with order assignments.</p>
                     </div>
                   ) : (
                     <ul className="divide-y divide-slate-100">
-                      {employees.map((emp) => {
-                        const isSelected = selectedEmployee && selectedEmployee._id === emp._id;
-                        return (
-                          <li key={emp._id}>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEmployee(emp)}
-                              className={`w-full text-left px-4 py-3 flex flex-col gap-1 transition-colors ${
-                                isSelected ? 'bg-green-50 border-l-2 border-green-500' : 'hover:bg-slate-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center text-[11px] font-semibold text-green-700">
-                                  {emp.name?.charAt(0).toUpperCase() || '?'}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold text-slate-800 truncate">{emp.name}</p>
-                                  <p className="text-[11px] text-slate-500 truncate">{emp.email}</p>
-                                </div>
+                      {employees.map((emp) => (
+                        <li 
+                          key={emp._id}
+                          className={`p-4 border-b border-slate-100 last:border-0 transition-colors duration-150 ${
+                            selectedEmployee?._id === emp._id ? 'bg-green-50' : 'hover:bg-slate-50'
+                          }`}
+                          onClick={() => setSelectedEmployee(emp)}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="flex-shrink-0 relative">
+                              <div className={`h-11 w-11 rounded-full ${
+                                selectedEmployee?._id === emp._id ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-600'
+                              } flex items-center justify-center text-lg font-medium`}>
+                                {emp.name?.charAt(0).toUpperCase() || '?'}
                               </div>
-                              {emp.employeeId && (
-                                <p className="text-[10px] text-slate-400 mt-0.5">ID: {emp.employeeId}</p>
+                              {emp.isOnline && (
+                                <div className="absolute bottom-0 right-0 h-3 w-3 bg-green-500 rounded-full border-2 border-white"></div>
                               )}
-                            </button>
-                          </li>
-                        );
-                      })}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-slate-900 truncate">{emp.name}</p>
+                                {emp.assignedOrdersCount > 0 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    {emp.assignedOrdersCount} {emp.assignedOrdersCount === 1 ? 'order' : 'orders'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 truncate">{emp.email}</p>
+                              {emp.lastActive && (
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  Last active: {new Date(emp.lastActive).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </div>
 
                 {/* Employee details */}
-                <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
-                  {selectedEmployee ? (
-                    <div className="space-y-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-semibold">
-                            {selectedEmployee.name?.charAt(0).toUpperCase() || '?'}
+                <div className="flex-1 overflow-y-auto p-4">
+                  <div className="space-y-4">
+                    {selectedEmployee ? (
+                      <>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-semibold">
+                              {selectedEmployee.name?.charAt(0).toUpperCase() || '?'}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-800">{selectedEmployee.name}</h3>
+                              <p className="text-xs text-slate-500">{selectedEmployee.email}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="text-sm font-semibold text-slate-800">{selectedEmployee.name}</h3>
-                            <p className="text-xs text-slate-500">{selectedEmployee.email}</p>
-                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${getRoleBadgeColor(selectedEmployee.role)}`}>
+                            {selectedEmployee.role}
+                          </span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${getRoleBadgeColor(selectedEmployee.role)}`}>
-                          {selectedEmployee.role}
-                        </span>
-                      </div>
 
-                      <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-600">
-                        {selectedEmployee.employeeId && (
-                          <div>
-                            <p className="text-[10px] uppercase text-slate-400">Employee ID</p>
-                            <p className="font-medium">{selectedEmployee.employeeId}</p>
-                          </div>
-                        )}
-                        {selectedEmployee.teamLeaderId && (
-                          <div>
-                            <p className="text-[10px] uppercase text-slate-400">Team Leader</p>
-                            <p className="font-medium">{selectedEmployee.teamLeaderId.name}</p>
-                          </div>
-                        )}
-                      </div>
+                        <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-600">
+                          {selectedEmployee.employeeId && (
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-400">Employee ID</p>
+                              <p className="font-medium">{selectedEmployee.employeeId}</p>
+                            </div>
+                          )}
+                          {selectedEmployee.teamLeaderId && (
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-400">Team Leader</p>
+                              <p className="font-medium">{selectedEmployee.teamLeaderId.name}</p>
+                            </div>
+                          )}
+                        </div>
 
-                      <div className="bg-white rounded-md border border-slate-200 p-3 text-[11px] text-slate-600">
-                        <p className="text-[10px] uppercase text-slate-400 mb-1">Role & Access</p>
-                        <p>
-                          This is a read-only summary of the employee. Permissions and detailed access
-                          rules can be managed from the admin Manage Teams panel.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                      Select an employee to see details.
-                    </div>
-                  )}
+                        <div className="bg-white rounded-md border border-slate-200 p-3 text-[11px] text-slate-600">
+                          <p className="text-[10px] uppercase text-slate-400 mb-1">Role & Access</p>
+                          <p>
+                            This is a read-only summary of the employee. Permissions and detailed access
+                            rules can be managed from the admin Manage Teams panel.
+                          </p>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
