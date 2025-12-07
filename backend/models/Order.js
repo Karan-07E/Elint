@@ -7,26 +7,33 @@ const orderSchema = new mongoose.Schema({
     ref: 'Party',
     required: true
   },
-  
+
   // Order Details
   poNumber: { type: String, required: true, trim: true },
   poDate: { type: Date, default: Date.now },
   estimatedDeliveryDate: { type: Date },
-  
+
   // Flow Stages
   status: {
     type: String,
     enum: [
-      'New', 
-      'Verified', 
-      'Manufacturing', 
-      'Quality_Check', 
-      'Documentation', 
-      'Dispatch', 
-      'Completed', 
+      'New',
+      'Verified',
+      'Manufacturing',
+      'Quality_Check',
+      'Documentation',
+      'Dispatch',
+      'Completed',
       'Deleted'
     ],
     default: 'New'
+  },
+
+  // Reference to the accounts employee assigned to this order
+  assignedAccountEmployee: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   },
 
   // ✅ NEW: Track history of status changes and notes
@@ -45,7 +52,7 @@ const orderSchema = new mongoose.Schema({
   // Items in the order
   items: [{
     item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item' },
-    itemName: String, 
+    itemName: String,
     quantity: Number,
     unit: String,
     rate: Number,
