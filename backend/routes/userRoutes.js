@@ -28,6 +28,13 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
+// Middleware to allow admin or accounts team
+const allowAccountsOrAdmin = (req, res, next) => {
+  if (req.user.role === 'admin' || req.user.role === 'accounts team') {
+    return next();
+  }
+  return res.status(403).json({ message: 'Access denied. Accounts team or admin only.' });
+};
 // GET all users (admin only)
 router.get('/', authenticateToken, isAdmin, async (req, res) => {
   try {
@@ -42,6 +49,18 @@ router.get('/', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
+// New route: GET accounts team employees
+router.get('/team/employees', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
+  try {
+    const employees = await User.find({ role: 'accounts employee' })
+      .select('-password')
+      .sort({ employeeId: 1 });
+    res.json(employees);
+  } catch (error) {
+    console.error('Get accounts employees error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 // GET single user by ID (admin only)
 router.get('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
@@ -77,8 +96,8 @@ const generateEmployeeId = async (role, teamLeaderId) => {
       throw new Error('Invalid team leader');
     }
     // Find highest employee number under this team
-    const lastEmp = await User.findOne({ 
-      role: 'accounts employee', 
+    const lastEmp = await User.findOne({
+      role: 'accounts employee',
       teamLeaderId: teamLeaderId,
       employeeId: { $regex: new RegExp(`^${teamLeader.employeeId}EMP\\d+$`) }
     }).sort({ employeeId: -1 });
@@ -91,8 +110,8 @@ const generateEmployeeId = async (role, teamLeaderId) => {
       throw new Error('Invalid team leader');
     }
     // Find highest employee number under this team
-    const lastEmp = await User.findOne({ 
-      role: 'product employee', 
+    const lastEmp = await User.findOne({
+      role: 'product employee',
       teamLeaderId: teamLeaderId,
       employeeId: { $regex: new RegExp(`^${teamLeader.employeeId}EMP\\d+$`) }
     }).sort({ employeeId: -1 });
@@ -129,17 +148,17 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const newUser = new User({ 
-      name, 
-      email, 
-      password: hashedPassword, 
+    const newUser = new User({
+      name,
+      email,
+      password: hashedPassword,
       role,
       employeeId,
       teamLeaderId: teamLeaderId || null
     });
     await newUser.save();
 
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'User created successfully',
       user: {
         id: newUser._id,
@@ -188,7 +207,7 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
 
     await user.save();
 
-    res.json({ 
+    res.json({
       message: 'User updated successfully',
       user: {
         id: user._id,
@@ -219,7 +238,7 @@ router.patch('/:id/permissions', authenticateToken, isAdmin, async (req, res) =>
     user.permissions = { ...user.permissions.toObject(), ...permissions };
     await user.save();
 
-    res.json({ 
+    res.json({
       message: 'Permissions updated successfully',
       permissions: user.permissions
     });
@@ -245,7 +264,7 @@ router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
     // If deleting a team leader, also delete or reassign their employees
     const employees = await User.find({ teamLeaderId: req.params.id });
     if (employees.length > 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: `Cannot delete team leader with ${employees.length} employee(s). Please reassign or delete employees first.`,
         employeeCount: employees.length
       });

@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
-import { getAllOrders } from '../services/api';
+import { getAllOrders, assignOrder } from '../services/api';
 
-// Helper utilities reused from other pages
+// --- Helpers ---
+
 const toDate = (value) => {
   if (!value) return null;
   const d = new Date(value);
@@ -16,7 +18,6 @@ const formatDate = (value) => {
 
 const computeOrderDates = (order) => {
   const start = toDate(order.poDate);
-
   const candidates = [];
   if (order.estimatedDeliveryDate) {
     const est = toDate(order.estimatedDeliveryDate);
@@ -30,15 +31,12 @@ const computeOrderDates = (order) => {
       }
     });
   }
-
   const deadline = candidates.length
     ? new Date(Math.max(...candidates.map((d) => d.getTime())))
     : start;
-
   return { start, deadline };
 };
 
-// Best-effort guess for whether an order is unassigned from accounts side
 const isUnassignedOrder = (order) => {
   return !(
     order.assignedAccountEmployee ||
@@ -48,456 +46,497 @@ const isUnassignedOrder = (order) => {
   );
 };
 
-const getStatusBadgeClasses = (status) => {
-  switch (status) {
-    case 'Completed':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'Dispatch':
-      return 'bg-blue-100 text-blue-700';
-    case 'Manufacturing':
-      return 'bg-orange-100 text-orange-700';
-    case 'Verified':
-      return 'bg-indigo-100 text-indigo-700';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
+// --- Components ---
+
+const PriorityBadge = ({ priority }) => {
+  const p = (priority || 'Normal').toLowerCase();
+  let classes = 'bg-slate-100 text-slate-600';
+  if (p === 'high') classes = 'bg-red-50 text-red-600 border border-red-100';
+  else if (p === 'medium') classes = 'bg-amber-50 text-amber-600 border border-amber-100';
+  else if (p === 'low') classes = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+
+  return (
+    <span className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full ${classes}`}>
+      {priority || 'Normal'}
+    </span>
+  );
 };
 
-const getRoleBadgeColor = (role) => {
-  switch (role) {
-    case 'accounts employee':
-      return 'bg-green-50 text-green-700';
-    case 'accounts team':
-      return 'bg-green-100 text-green-800';
-    default:
-      return 'bg-slate-100 text-slate-700';
+const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedEmployeeId, domRef, isHighlighted }) => {
+  const [assigneeId, setAssigneeId] = useState(selectedEmployeeId || '');
+  const [isExiting, setIsExiting] = useState(false);
+
+  useEffect(() => {
+    if (selectedEmployeeId) setAssigneeId(selectedEmployeeId);
+  }, [selectedEmployeeId]);
+
+  const { start, deadline } = computeOrderDates(order);
+  const customer = order.customerName || order.party?.name || 'Customer';
+  const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+
+  const handleAssign = () => {
+    if (!assigneeId) return;
+    setIsExiting(true);
+    // Wait for animation to finish before calling parent handler
+    setTimeout(() => {
+      onAssign(order._id, assigneeId);
+    }, 300);
+  };
+
+  if (isExiting) {
+    return <div className="transition-all duration-300 transform scale-95 opacity-0 h-0 overflow-hidden margin-0 padding-0" />;
   }
+
+  return (
+    <div
+      ref={domRef}
+      className={`bg-white rounded-[18px] border transition-all duration-500 mb-4 overflow-hidden 
+      ${isExpanded ? 'ring-2 ring-blue-50 border-blue-100' : 'border-slate-100'} 
+      ${isHighlighted ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.3),0_10px_15px_-3px_rgba(59,130,246,0.1)] scale-[1.02] border-blue-200 z-10' : 'shadow-sm hover:shadow-md'}`}
+    >
+      {/* Header (Always Visible) */}
+      <div
+        onClick={onToggle}
+        className="p-5 cursor-pointer flex items-center justify-between bg-white hover:bg-slate-50/30 transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-blue-600 bg-blue-50`}>
+            <span className="font-bold text-sm">PO</span>
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-800 text-sm">{order.poNumber || 'N/A'}</h3>
+            <p className="text-xs text-slate-500">{customer}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="text-right hidden sm:block">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">Deadline</p>
+            <p className={`text-xs font-medium ${deadline && new Date(deadline) < new Date() ? 'text-red-500' : 'text-slate-600'}`}>
+              {formatDate(deadline)}
+            </p>
+          </div>
+
+          <PriorityBadge priority={order.priority} />
+
+          <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded Body */}
+      {isExpanded && (
+        <div className="px-5 pb-5 pt-0 animate-fadeIn">
+          <div className="h-px w-full bg-slate-100 mb-4" />
+
+          <div className="flex flex-col xl:flex-row gap-6">
+            {/* Left Col: Details */}
+            <div className="flex-1 space-y-4">
+              {/* Dates Row */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-3 rounded-xl border border-slate-100/50">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase block">Start Date</span>
+                  <span className="text-xs font-medium text-slate-700">{formatDate(start)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase block">Total Amount</span>
+                  <span className="text-xs font-bold text-slate-700">₹{(order.totalAmount || 0).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="overflow-hidden rounded-xl border border-slate-100">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-500 font-medium">
+                    <tr>
+                      <th className="px-3 py-2">Item</th>
+                      <th className="px-3 py-2">Delivery</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Amt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {order.items?.map((item, i) => (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2 text-slate-700">{item.itemName || item.name}</td>
+                        <td className="px-3 py-2 text-slate-500">{formatDate(item.deliveryDate)}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{item.quantity}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{item.amount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Right Col: Action */}
+            <div className="w-full xl:w-64 flex flex-col justify-end space-y-3">
+              <div className="bg-blue-50/30 p-4 rounded-xl border border-blue-50 flex flex-col gap-3">
+                <label className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">Assign To Employee</label>
+                <select
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white"
+                  value={assigneeId}
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                >
+                  <option value="">Select Account Employee</option>
+                  {employees.map(emp => (
+                    <option key={emp._id} value={emp._id}>{emp.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAssign}
+                  disabled={!assigneeId}
+                  className="w-full py-2 bg-green-500 text-white rounded-lg text-sm font-medium shadow-md shadow-green-200 hover:bg-green-600 hover:shadow-lg hover:shadow-green-300 disabled:opacity-50 disabled:shadow-none transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <span>Assign Order</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
+
+const EmployeeCard = ({ employee, stats, isSelected, onClick }) => {
+  const status = stats.pending > 0 ? 'Busy' : 'Available';
+  const isBusy = status === 'Busy';
+
+  return (
+    <div className="flex flex-col">
+      <div
+        onClick={onClick}
+        className={`p-4 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden z-10 ${isSelected
+          ? 'bg-white border-blue-100 ring-2 ring-blue-50 shadow-md transform scale-[1.01]'
+          : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
+          }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
+            }`}>
+            {employee.name?.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start">
+              <h4 className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>
+                {employee.name}
+              </h4>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isBusy ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
+                {status}
+              </span>
+            </div>
+            <p className={`text-xs truncate ${isSelected ? 'text-blue-700/80' : 'text-slate-400'}`}>
+              {employee.email}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Inline Details Panel - Dynamic Stats */}
+      <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSelected ? 'max-h-96 opacity-100 mt-2 mb-4' : 'max-h-0 opacity-0'}`}>
+        <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 mx-1">
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Total Assigned</p>
+              <p className="text-lg font-bold text-slate-700">{stats.total}</p>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Pending Orders</p>
+              <p className="text-lg font-bold text-amber-500">{stats.pending}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-[10px] uppercase text-slate-400 font-semibold">Full Name</p>
+              <p className="text-xs font-medium text-slate-700">{employee.name}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] uppercase text-slate-400 font-semibold">Employee ID</p>
+                <p className="text-xs font-medium text-slate-700 font-mono">{employee.employeeId || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-slate-400 font-semibold">Role</p>
+                <p className="text-xs font-medium text-slate-700 capitalize">{employee.role}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] uppercase text-slate-400 font-semibold">Joined</p>
+                <p className="text-xs font-medium text-slate-700">{formatDate(employee.date)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-slate-400 font-semibold">Completed</p>
+                <p className="text-xs font-bold text-green-600">{stats.completed}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Page ---
 
 const AccountsTeamManage = () => {
-  const [orders, setOrders] = useState([]);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [employees, setEmployees] = useState([]);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  
-  // Auto-select first employee when employees are loaded
-  useEffect(() => {
-    if (employees.length > 0 && !selectedEmployee) {
-      setSelectedEmployee(employees[0]);
-    }
-  }, [employees, selectedEmployee]);
+  const [searchParams] = useSearchParams();
+  const orderRefs = useRef({});
 
-  // Auto-select first employee when employees are loaded
-  useEffect(() => {
-    if (employees.length > 0 && !selectedEmployee) {
-      setSelectedEmployee(employees[0]);
-    }
-  }, [employees, selectedEmployee]);
+  const [allOrders, setAllOrders] = useState([]); // Store ALL orders for stats
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const currentUser = useMemo(() => {
+  // UI State
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+  const [highlightedOrderId, setHighlightedOrderId] = useState(null);
+  const [toast, setToast] = useState(null); // { message, type }
+
+  const loadData = async () => {
     try {
-      return JSON.parse(localStorage.getItem('user')) || {};
-    } catch {
-      return {};
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const ordersRes = await getAllOrders(); // Axios response
+
+      // Fetch employees
+      let employeesData = [];
+      if (token) {
+        try {
+          const usersRes = await fetch('/api/users/team/employees', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (usersRes.ok) employeesData = await usersRes.json();
+        } catch (e) {
+          console.error('Failed to fetch employees', e);
+        }
+      }
+
+      const rawOrders = ordersRes.data || [];
+      setAllOrders(rawOrders); // Keep all for stats
+
+      const accountsEmps = (employeesData || []).filter((u) => u.role === 'accounts employee');
+      setEmployees(accountsEmps);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load data', err);
+      setError('Failed to load dashboard data.');
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-
-        const token = localStorage.getItem('token');
-
-        const [ordersRes, usersRes] = await Promise.all([
-          getAllOrders(),
-          fetch('/api/users', {
-            headers: {
-              Authorization: token ? `Bearer ${token}` : undefined,
-            },
-          }),
-        ]);
-
-        const rawOrders = ordersRes.data || [];
-        const unassigned = rawOrders.filter(isUnassignedOrder);
-        setOrders(unassigned);
-        // Don't pre-select any order so the details panel stays empty until user clicks
-        setSelectedOrder(null);
-
-        const usersJson = usersRes.ok ? await usersRes.json() : [];
-        const accountsEmps = (usersJson || []).filter((u) => u.role === 'accounts employee');
-        setEmployees(accountsEmps);
-        setSelectedEmployee(accountsEmps[0] || null);
-
-        setError(null);
-      } catch (err) {
-        console.error('Failed to load manage teams data', err);
-        setError('Failed to load teams data.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadData();
   }, []);
 
+  // Handle "Jump to Order" from URL
+  useEffect(() => {
+    const jumpId = searchParams.get('jump');
+    if (jumpId && !loading && allOrders.length > 0) {
+      // Find order and check if unassigned
+      const order = allOrders.find(o => o._id === jumpId);
+
+      if (order && isUnassignedOrder(order)) {
+        // Use timeout to ensure DOM is ready
+        setTimeout(() => {
+          const el = orderRefs.current[jumpId];
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setExpandedOrderId(jumpId);
+            setHighlightedOrderId(jumpId);
+
+            // Try to find the select and focus it
+            const select = el.querySelector('select');
+            if (select) select.focus();
+
+            // Remove highlight after 2.5s
+            setTimeout(() => setHighlightedOrderId(null), 2500);
+          }
+        }, 300);
+      }
+    }
+  }, [searchParams, loading, allOrders]);
+
+  // Filter unassigned orders for left panel
+  const unassignedOrders = useMemo(() => {
+    return allOrders.filter(isUnassignedOrder);
+  }, [allOrders]);
+
+  // Calculate dynamic stats for an employee
+  const getEmployeeStats = (empId) => {
+    const empOrders = allOrders.filter(o =>
+      (o.assignedAccountEmployee === empId) ||
+      (o.assignedAccountEmployee?._id === empId) ||
+      (o.accountsEmployee === empId)
+    );
+
+    const total = empOrders.length;
+    const completed = empOrders.filter(o => o.status === 'Completed').length;
+    const pending = total - completed;
+
+    return { total, completed, pending };
+  };
+
+  const handleAssign = async (orderId, employeeId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const emp = employees.find(e => e._id === employeeId);
+      const order = unassignedOrders.find(o => o._id === orderId);
+
+      // Optimistically optionally select the employee in the right panel
+      if (employeeId) setSelectedEmployeeId(employeeId);
+
+      // Call API
+      await assignOrder(orderId, employeeId);
+
+      // Success
+      setToast({ message: `Order Assigned to ${emp?.name || 'employee'}`, type: 'success' });
+
+      // Update local state for immediate UI reflection without refetch
+      setAllOrders(prev => prev.map(o => {
+        if (o._id === orderId) {
+          return { ...o, assignedAccountEmployee: employeeId }; // Mark as assigned recursively
+        }
+        return o;
+      }));
+
+      // Clear toast after 3s
+      setTimeout(() => setToast(null), 3000);
+
+    } catch (e) {
+      console.error(e);
+      alert('Error assigning order: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-slate-50/50 flex text-slate-800 font-sans">
       <Sidebar />
-      <div className="ml-64 p-6">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">Manage Teams</h1>
-          </div>
-          {currentUser?.name && (
-            <div className="text-right text-xs text-slate-500">
-              <p className="font-semibold text-slate-700">{currentUser.name}</p>
-              <p className="capitalize">{currentUser.role}</p>
-            </div>
-          )}
+      <div className="flex-1 ml-64 p-8">
+
+        {/* Minimal Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Manage Teams</h1>
         </div>
 
-        {error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm flex items-center gap-3">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             {error}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 p-4 h-[calc(100vh-180px)]">
-            {/* Left: Unassigned Orders */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden transition-all duration-200 hover:shadow-md">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-50">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
+        )}
+
+        {/* Dashboard Grid */}
+        <div className="grid grid-cols-12 gap-8 h-[calc(100vh-140px)]">
+
+          {/* Left Panel: Unassigned Orders (70%) */}
+          <div className="col-span-12 lg:col-span-8 flex flex-col gap-4 text-sm">
+            <div className="bg-white rounded-[24px] shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden relative">
+              <div className="px-8 py-6 border-b border-slate-50 bg-white z-10 sticky top-0">
+                <div className="flex justify-between items-center">
                   <div>
-                    <h2 className="text-xl font-semibold text-slate-800">Unassigned Orders</h2>
-                    <p className="text-xs text-slate-500">Orders waiting to be assigned</p>
+                    <h2 className="text-lg font-bold text-slate-800">Unassigned Orders</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Orders waiting to be assigned</p>
                   </div>
-                </div>
-                <span className="text-sm px-3 py-1.5 rounded-full bg-white text-blue-700 font-medium border border-blue-100 shadow-sm">
-                  {orders.length} {orders.length === 1 ? 'order' : 'orders'}
-                </span>
-              </div>
-
-              <div className="flex-1 overflow-hidden flex flex-col">
-                {/* List view */}
-                {!selectedOrder && (
-                  <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-slate-50">
-                    {orders.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center p-8 text-center">
-                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                          </svg>
-                        </div>
-                        <h3 className="text-base font-medium text-slate-700 mb-1">No unassigned orders</h3>
-                        <p className="text-sm text-slate-500 max-w-xs">All orders have been assigned to team members.</p>
-                      </div>
-                    ) : (
-                      <ul className="divide-y divide-slate-100">
-                        {orders.map((order) => {
-                          const { deadline } = computeOrderDates(order);
-                          const customer = order.customerName || order.party?.name || 'Customer';
-                          const firstItemName = Array.isArray(order.items) && order.items.length > 0
-                            ? (order.items[0].itemName || order.items[0].name || 'Item')
-                            : 'Item';
-
-                          return (
-                            <li key={order._id} className="border-b border-slate-100 last:border-0">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedOrder(order)}
-                                className="w-full text-left px-5 py-3.5 flex flex-col gap-1.5 hover:bg-blue-50/50 transition-all duration-150 group"
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-slate-800 truncate group-hover:text-blue-700">
-                                      {firstItemName}
-                                    </p>
-                                    <div className="flex items-center mt-1 space-x-2">
-                                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                                        PO: {order.poNumber || 'N/A'}
-                                      </span>
-                                      <span className="text-xs text-slate-400">
-                                        {customer}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col items-end ml-2">
-                                    <span className="text-xs font-medium text-slate-500">
-                                      {deadline ? deadline.toLocaleDateString() : '-'}
-                                    </span>
-                                    {deadline && new Date(deadline) < new Date() && (
-                                      <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full mt-1">
-                                        Overdue
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                )}
-
-                {/* Detail view */}
-                {selectedOrder && (
-                  <div className="h-full overflow-y-auto p-4 bg-slate-50">
-                    <div className="space-y-4">
-                      {/* Header with back arrow, PO and status */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedOrder(null)}
-                            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/0 text-blue-600 shadow-sm hover:shadow-md hover:bg-blue-50/50 transition-transform transform hover:-translate-y-0.5 border border-blue-100"
-                            title="Back to orders"
-                          >
-                            <span className="text-lg leading-none">←</span>
-                          </button>
-                          <div>
-                            <h3 className="text-base font-semibold text-slate-900">
-                              PO: {selectedOrder.poNumber || 'N/A'}
-                            </h3>
-                            <p className="text-xs text-slate-500">
-                              {selectedOrder.customerName || selectedOrder.party?.name || 'Customer'}
-                            </p>
-                          </div>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${getStatusBadgeClasses(selectedOrder.status)}`}>
-                          {selectedOrder.status || 'New'}
-                        </span>
-                      </div>
-
-                      {loading ? (
-                        <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-                          <div className="text-slate-400">Loading team data...</div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="space-y-3 text-[11px] text-slate-600">
-                            {(() => {
-                              const { start, deadline } = computeOrderDates(selectedOrder);
-                              return (
-                                <>
-                                  <div className="flex justify-between gap-6">
-                                    <div>
-                                      <p className="text-[10px] uppercase text-slate-400">Start</p>
-                                      <p className="font-medium">{start ? start.toLocaleDateString() : '-'}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[10px] uppercase text-slate-400">Deadline</p>
-                                      <p className="font-medium">{deadline ? deadline.toLocaleDateString() : '-'}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex justify-between gap-6">
-                                    <div>
-                                      <p className="text-[10px] uppercase text-slate-400">Priority</p>
-                                      <p className="font-medium">
-                                        {selectedOrder.priority || 'Normal'}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[10px] uppercase text-slate-400">Amount</p>
-                                      <p className="font-semibold text-slate-800">
-                                        ₹{(selectedOrder.totalAmount || 0).toLocaleString()}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </>
-                              );
-                            })()}
-                          </div>
-
-                          <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-                            <table className="w-full text-[11px]">
-                              <thead className="bg-slate-100 text-slate-600">
-                                <tr>
-                                  <th className="px-3 py-2 text-left font-semibold">Item</th>
-                                  <th className="px-3 py-2 text-left font-semibold">Delivery</th>
-                                  <th className="px-3 py-2 text-left font-semibold">Qty</th>
-                                  <th className="px-3 py-2 text-right font-semibold">Amount</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100 bg-white">
-                                {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 ? (
-                                  selectedOrder.items.map((item, idx) => (
-                                    <tr key={idx}>
-                                      <td className="px-3 py-2 text-slate-700">
-                                        {item.itemName || item.name}
-                                      </td>
-                                      <td className="px-3 py-2 text-slate-500">
-                                        {formatDate(item.deliveryDate)}
-                                      </td>
-                                      <td className="px-3 py-2 text-slate-500">
-                                        {item.quantity} {item.unit}
-                                      </td>
-                                      <td className="px-3 py-2 text-right text-slate-700">
-                                        ₹{item.amount}
-                                      </td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  <tr>
-                                    <td colSpan={4} className="px-3 py-3 text-center text-slate-400">
-                                      No items.
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {selectedOrder.notes && (
-                            <div className="bg-white rounded-md border border-slate-200 p-3 text-[11px] text-slate-600">
-                              <p className="text-[10px] uppercase text-slate-400 mb-1">Notes</p>
-                              <p>{selectedOrder.notes}</p>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Accounts Employees */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden transition-all duration-200 hover:shadow-md">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-green-50 to-green-50">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-800">Accounts Team</h2>
-                    <p className="text-xs text-slate-500">Manage your team members</p>
-                  </div>
-                </div>
-                <span className="text-sm px-3 py-1.5 rounded-full bg-white text-green-700 font-medium border border-green-100 shadow-sm">
-                  {employees.length} {employees.length === 1 ? 'member' : 'members'}
-                </span>
-              </div>
-
-              <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-                {/* Employee list */}
-                <div className="flex-1 overflow-y-auto">
-                  {employees.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-                      <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                      </div>
-                      <h3 className="text-base font-medium text-slate-700 mb-1">No team members</h3>
-                      <p className="text-sm text-slate-500 max-w-xs">Add team members to get started with order assignments.</p>
-                    </div>
-                  ) : (
-                    <ul className="divide-y divide-slate-100">
-                      {employees.map((emp) => (
-                        <li 
-                          key={emp._id}
-                          className={`p-4 border-b border-slate-100 last:border-0 transition-colors duration-150 ${
-                            selectedEmployee?._id === emp._id ? 'bg-green-50' : 'hover:bg-slate-50'
-                          }`}
-                          onClick={() => setSelectedEmployee(emp)}
-                        >
-                          <div className="flex items-center space-x-3">
-                            <div className="flex-shrink-0 relative">
-                              <div className={`h-11 w-11 rounded-full ${
-                                selectedEmployee?._id === emp._id ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-600'
-                              } flex items-center justify-center text-lg font-medium`}>
-                                {emp.name?.charAt(0).toUpperCase() || '?'}
-                              </div>
-                              {emp.isOnline && (
-                                <div className="absolute bottom-0 right-0 h-3 w-3 bg-green-500 rounded-full border-2 border-white"></div>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-slate-900 truncate">{emp.name}</p>
-                                {emp.assignedOrdersCount > 0 && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    {emp.assignedOrdersCount} {emp.assignedOrdersCount === 1 ? 'order' : 'orders'}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-slate-500 truncate">{emp.email}</p>
-                              {emp.lastActive && (
-                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                  Last active: {new Date(emp.lastActive).toLocaleDateString()}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                  {unassignedOrders.length > 0 && (
+                    <span className="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                      {unassignedOrders.length}
+                    </span>
                   )}
                 </div>
+              </div>
 
-                {/* Employee details */}
-                <div className="flex-1 overflow-y-auto p-4">
-                  <div className="space-y-4">
-                    {selectedEmployee ? (
-                      <>
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-semibold">
-                              {selectedEmployee.name?.charAt(0).toUpperCase() || '?'}
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-semibold text-slate-800">{selectedEmployee.name}</h3>
-                              <p className="text-xs text-slate-500">{selectedEmployee.email}</p>
-                            </div>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${getRoleBadgeColor(selectedEmployee.role)}`}>
-                            {selectedEmployee.role}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-600">
-                          {selectedEmployee.employeeId && (
-                            <div>
-                              <p className="text-[10px] uppercase text-slate-400">Employee ID</p>
-                              <p className="font-medium">{selectedEmployee.employeeId}</p>
-                            </div>
-                          )}
-                          {selectedEmployee.teamLeaderId && (
-                            <div>
-                              <p className="text-[10px] uppercase text-slate-400">Team Leader</p>
-                              <p className="font-medium">{selectedEmployee.teamLeaderId.name}</p>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-white rounded-md border border-slate-200 p-3 text-[11px] text-slate-600">
-                          <p className="text-[10px] uppercase text-slate-400 mb-1">Role & Access</p>
-                          <p>
-                            This is a read-only summary of the employee. Permissions and detailed access
-                            rules can be managed from the admin Manage Teams panel.
-                          </p>
-                        </div>
-                      </>
-                    ) : null}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/30">
+                {loading ? (
+                  <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Loading orders...</div>
+                ) : unassignedOrders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                      <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                    <h3 className="text-slate-700 font-semibold">All cleared!</h3>
+                    <p className="text-slate-400 text-xs mt-1">No unassigned orders found.</p>
                   </div>
-                </div>
+                ) : (
+                  unassignedOrders.map(order => (
+                    <OrderCard
+                      key={order._id}
+                      domRef={el => orderRefs.current[order._id] = el}
+                      order={order}
+                      employees={employees}
+                      onAssign={handleAssign}
+                      isExpanded={expandedOrderId === order._id}
+                      onToggle={() => setExpandedOrderId(expandedOrderId === order._id ? null : order._id)}
+                      selectedEmployeeId={selectedEmployeeId}
+                      isHighlighted={highlightedOrderId === order._id}
+                    />
+                  ))
+                )}
               </div>
             </div>
           </div>
-        )}
+
+          {/* Right Panel: Accounts Team (30%) */}
+          <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 text-sm">
+            <div className="bg-white rounded-[24px] shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden">
+              <div className="px-6 py-6 border-b border-slate-50">
+                <h2 className="text-lg font-bold text-slate-800">Accounts Team</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Manage your team members</p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 bg-slate-50/20">
+                <div className="flex flex-col gap-2">
+                  {employees.map(emp => {
+                    const stats = getEmployeeStats(emp._id);
+                    return (
+                      <EmployeeCard
+                        key={emp._id}
+                        employee={emp}
+                        stats={stats}
+                        isSelected={selectedEmployeeId === emp._id}
+                        onClick={() => setSelectedEmployeeId(selectedEmployeeId === emp._id ? null : emp._id)}
+                      />
+                    );
+                  })}
+
+                  {employees.length === 0 && !loading && (
+                    <div className="text-center p-6 text-slate-400 text-xs">No team members found.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 bg-white border-t border-slate-50 text-[10px] text-slate-300 text-center">
+                Team Overview
+              </div>
+            </div>
+          </div>
+
+        </div>
+
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-8 right-8 z-50 animate-bounce-in">
+          <div className="bg-slate-900/90 backdrop-blur-sm text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-3">
+            <span className="bg-green-500 rounded-full p-0.5">
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+            </span>
+            <p className="text-xs font-medium">{toast.message}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

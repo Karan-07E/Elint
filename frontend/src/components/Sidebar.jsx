@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  LuLayoutDashboard, 
-  LuBox, 
-  LuLandmark, 
-  LuTrendingUp, 
-  LuShoppingCart, 
+import {
+  LuLayoutDashboard,
+  LuBox,
+  LuLandmark,
+  LuTrendingUp,
+  LuShoppingCart,
   LuChartPie, // Fixed: Replaced LuPieChart
-  LuReceipt, 
+  LuReceipt,
   LuFileChartColumn, // Fixed: Replaced LuFileBarChart
-  LuWarehouse, 
-  LuClipboardList, 
-  LuSettings, 
-  LuLogOut, 
+  LuWarehouse,
+  LuClipboardList,
+  LuSettings,
+  LuLogOut,
   LuSearch,
   LuChevronRight,
   LuChevronDown,
@@ -24,10 +24,46 @@ import { hasPermission } from '../utils/permissions';
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  
-  // Toggles for dropdowns
-  const [isAccountsOpen, setIsAccountsOpen] = useState(false);
-  const [isPurchaseOpen, setIsPurchaseOpen] = useState(false);
+
+  // --- Deterministic Sidebar State ---
+
+  // 'explicitAccountsOpen' controls the Accounts section override.
+  // null  => Auto-mode: Open if URL starts with /accounts, Closed otherwise.
+  // true  => Manually Forced Open (user expanded it).
+  // false => Manually Forced Closed (user collapsed it).
+  const [explicitAccountsOpen, setExplicitAccountsOpen] = useState(null);
+  const [isPurchaseOpen, setIsPurchaseOpen] = useState(false); // Keep simple local state for nested items for now
+
+  // Derived: Is the user currently inside the Accounts section?
+  const isAccountsRoute = location.pathname.startsWith('/accounts');
+
+  // Final Computed State for Accounts Sidebar
+  // If user has set an explicit state, respect it. Otherwise, derive from URL.
+  const isAccountsOpen = explicitAccountsOpen !== null
+    ? explicitAccountsOpen
+    : isAccountsRoute;
+
+  // Handlers
+  const handleAccountsHeaderClick = () => {
+    // Toggle the *effective* state. 
+    // If currently open (for any reason), force close (false). 
+    // If currently closed, force open (true).
+    setExplicitAccountsOpen(!isAccountsOpen);
+  };
+
+  const handleTopLevelClick = () => {
+    // When clicking a different top-level item (Items, Orders, etc.),
+    // reset the specific override so the system returns to "Auto-mode".
+    // Since we are navigating AWAY from /accounts, "Auto-mode" will naturally close Accounts.
+    setExplicitAccountsOpen(null);
+  };
+
+  // Sync Purchase state roughly with URL for initial load convenience
+  // (Optional: can be made determinstic too, but scope is Accounts)
+  React.useEffect(() => {
+    if (location.pathname.startsWith('/purchase')) setIsPurchaseOpen(true);
+  }, [location.pathname]);
+
 
   const handleLogout = async () => {
     try {
@@ -65,64 +101,73 @@ const Sidebar = () => {
   // Define menu items with professional structure and icons
   const allMenuItems = [
     // 1. Home
-    { 
-      path: '/home', 
-      icon: <LuLayoutDashboard size={20} />, 
-      label: 'Home', 
-      roles: ['user', 'admin'], 
-      permission: null 
+    {
+      path: '/home',
+      icon: <LuLayoutDashboard size={20} />,
+      label: 'Home',
+      roles: ['user', 'admin'],
+      permission: null
     },
-    
+
     // 2. Items
-    { 
-      path: '/items', 
-      icon: <LuBox size={20} />, 
-      label: 'Items', 
-      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'], 
-      permission: 'viewItems' 
+    {
+      path: '/items',
+      icon: <LuBox size={20} />,
+      label: 'Items',
+      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'],
+      permission: 'viewItems'
+    },
+
+    // 2.5 My Orders (Employee View)
+    {
+      path: '/employee/dashboard',
+      icon: <LuClipboardList size={20} />,
+      label: 'My Orders',
+      roles: ['employee'], // specific for the new employee role
+      permission: null
     },
 
     // 3. Accounts (Dropdown)
-    { 
-      path: null, 
-      icon: <LuLandmark size={20} />, 
-      label: 'Accounts', 
+    {
+      path: null,
+      icon: <LuLandmark size={20} />,
+      label: 'Accounts',
       roles: ['user', 'admin', 'accounts team', 'accounts employee'],
-      permission: null, 
+      permission: null,
       isDropdown: true,
       stateKey: 'accounts',
       subItems: [
         // Sales
-        { 
-          path: '/sale/new', 
-          icon: <LuTrendingUp size={18} />, 
-          label: 'Sales', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
-          permission: 'viewSales' 
+        {
+          path: '/accounts/sales',
+          icon: <LuTrendingUp size={18} />,
+          label: 'Sales',
+          roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+          permission: 'viewSales'
         },
-        
+
         // Purchases (Nested Dropdown)
-        { 
-          path: null, 
-          icon: <LuShoppingCart size={18} />, 
-          label: 'Purchases', 
+        {
+          path: null,
+          icon: <LuShoppingCart size={18} />,
+          label: 'Purchases',
           roles: ['user', 'admin', 'accounts team', 'accounts employee'],
           permission: 'viewPurchases',
           isNestedDropdown: true,
           stateKey: 'purchase',
           subItems: [
-            { path: '/purchase', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/purchase/new', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
+            { path: '/accounts/purchase-dashboard', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
+            { path: '/accounts/purchase-bills', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
           ]
         },
 
         // Accounts Report
-        { 
-          path: '/reports', 
-          icon: <LuFileChartColumn size={18} />, 
-          label: 'Accounts Report', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
-          permission: 'viewReports' 
+        {
+          path: '/accounts/report',
+          icon: <LuFileChartColumn size={18} />,
+          label: 'Accounts Report',
+          roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+          permission: 'viewReports'
         },
 
         // Manage Teams for Accounts Team
@@ -134,24 +179,39 @@ const Sidebar = () => {
           permission: null
         },
 
+        // Manage Orders (New)
+        {
+          path: '/accounts/manage-orders',
+          icon: <LuClipboardList size={18} />,
+          label: 'Manage Orders',
+          roles: ['accounts team', 'accounts employee'],
+          permission: null
+        },
+
         // Inventory
-        { 
-          path: '/items', // Reusing items path as Inventory usually maps to Items in simple ERPs
-          icon: <LuWarehouse size={18} />, 
-          label: 'Inventory', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
-          permission: 'viewItems' 
+        {
+          path: '/accounts/inventory',
+          icon: <LuWarehouse size={18} />,
+          label: 'Inventory',
+          roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+          permission: 'viewItems'
         },
       ]
     },
-    
+
     // 4. Orders
-    { 
-      path: '/orders', 
-      icon: <LuClipboardList size={20} />, 
-      label: 'Orders', 
-      roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'], 
-      permission: null 
+    {
+      path: '/orders',
+      icon: <LuClipboardList size={20} />,
+      label: 'Orders',
+      icon: <LuClipboardList size={20} />,
+      label: 'Orders',
+      // Explicitly EXCLUDE 'employee' from the general 'Orders' list if you want them to ONLY see 'My Orders'
+      // or keep it if they can see global orders too (but read-only). 
+      // User request said: "displays only orders mapped... No client-side filtering...".
+      // So safest is to HIDE this global link for 'employee' to prevent confusion/access denied.
+      roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'],
+      permission: null
     },
 
     // 5. Order Calendar
@@ -164,30 +224,11 @@ const Sidebar = () => {
     },
 
     // 6. Settings
-    { 
-      path: '/settings', 
-      icon: <LuSettings size={20} />, 
-      label: 'Settings', 
-      roles: ['user', 'admin'], 
-      permission: 'viewSettings' 
-    },
-
-    // 7. Manage Teams for Accounts Team (top-level)
-    { 
-      path: '/accounts/manage-teams', 
-      icon: <LuUsers size={20} />, 
-      label: 'Manage Teams', 
-      roles: ['accounts team'], 
-      permission: null 
-    },
-
-    // Admin Only: Manage Teams
-    { 
-      path: '/manage-teams', 
-      icon: <LuUsers size={20} />, 
-      label: 'Manage Teams', 
-      roles: ['admin'], 
-      permission: 'manageUsers' 
+    {
+      path: '/settings',
+      label: 'Manage Teams',
+      roles: ['admin'],
+      permission: 'manageUsers'
     },
   ];
 
@@ -213,7 +254,7 @@ const Sidebar = () => {
         }
         return subItem;
       });
-      
+
       if (filteredSubItems.length === 0) return null;
       return { ...item, subItems: filteredSubItems };
     }
@@ -222,7 +263,7 @@ const Sidebar = () => {
 
   return (
     <div className="w-64 bg-slate-900 text-slate-300 h-screen flex flex-col fixed left-0 top-0 border-r border-slate-800 z-50 font-sans shadow-xl">
-      
+
       {/* Header */}
       <div className="p-5 border-b border-slate-800 bg-slate-900">
         <div className="flex items-center gap-3 mb-5 px-1">
@@ -232,12 +273,12 @@ const Sidebar = () => {
           </div>
           <span className="text-xl font-bold text-white tracking-tight">Elints ERP</span>
         </div>
-        
+
         <div className="relative group">
           <LuSearch className="absolute left-3 top-2.5 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={14} />
-          <input 
-            type="text" 
-            placeholder="Search..." 
+          <input
+            type="text"
+            placeholder="Search..."
             className="w-full bg-slate-800 text-slate-200 text-xs rounded-lg px-3 pl-9 py-2.5 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all placeholder:text-slate-500"
           />
         </div>
@@ -257,18 +298,21 @@ const Sidebar = () => {
                   return false;
                 });
               };
-              
+
+              // Use derived state instead of ad-hoc checks
               const isAnySubItemActive = checkActive(item.subItems);
-              const isOpen = isAccountsOpen; 
-              
+              const isOpen = isAccountsOpen;
+
               return (
                 <li key={`dropdown-${index}`}>
                   <div
-                    onClick={() => setIsAccountsOpen(!isAccountsOpen)}
+                    onClick={handleAccountsHeaderClick}
                     className={`
                       flex items-center justify-between relative py-3 px-3 rounded-lg cursor-pointer transition-all duration-200 group
                       ${isAnySubItemActive || isOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}
                     `}
+                    role="button"
+                    aria-expanded={isOpen}
                   >
                     <div className="flex items-center gap-3">
                       <span className={`${isAnySubItemActive || isOpen ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>
@@ -276,12 +320,12 @@ const Sidebar = () => {
                       </span>
                       <span className="text-sm font-medium">{item.label}</span>
                     </div>
-                    <LuChevronRight 
-                      size={14} 
-                      className={`transition-transform duration-200 ${isOpen ? 'rotate-90 text-blue-500' : 'text-slate-600'}`} 
+                    <LuChevronRight
+                      size={14}
+                      className={`transition-transform duration-200 ${isOpen ? 'rotate-90 text-blue-500' : 'text-slate-600'}`}
                     />
                   </div>
-                  
+
                   {/* Dropdown Content */}
                   <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
                     <ul className="space-y-1 pl-3 border-l-2 border-slate-800 ml-5">
@@ -290,7 +334,7 @@ const Sidebar = () => {
                           // Nested Dropdown (Purchases)
                           const isNestedOpen = isPurchaseOpen;
                           const isAnyNestedActive = subItem.subItems.some(nested => location.pathname === nested.path);
-                          
+
                           return (
                             <li key={`nested-${subIndex}`}>
                               <div
@@ -311,7 +355,7 @@ const Sidebar = () => {
                                 </div>
                                 <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
                               </div>
-                              
+
                               {/* Nested Content */}
                               {isNestedOpen && (
                                 <ul className="mt-1 space-y-1 pl-3 border-l border-slate-800 ml-4 bg-slate-900/50 py-1 rounded-r-lg">
@@ -323,8 +367,8 @@ const Sidebar = () => {
                                           to={nestedItem.path}
                                           className={`
                                             flex items-center gap-3 py-2 px-3 rounded-md text-xs transition-all
-                                            ${isNestedActive 
-                                              ? 'bg-blue-600/10 text-blue-400 font-medium' 
+                                            ${isNestedActive
+                                              ? 'bg-blue-600/10 text-blue-400 font-medium'
                                               : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}
                                           `}
                                         >
@@ -341,7 +385,7 @@ const Sidebar = () => {
                             </li>
                           );
                         }
-                        
+
                         // Regular Sub Item
                         const isSubActive = location.pathname === subItem.path;
                         return (
@@ -350,8 +394,8 @@ const Sidebar = () => {
                               to={subItem.path}
                               className={`
                                 flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-all
-                                ${isSubActive 
-                                  ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20' 
+                                ${isSubActive
+                                  ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20'
                                   : 'text-slate-400 hover:text-white hover:bg-slate-800'}
                               `}
                             >
@@ -368,18 +412,19 @@ const Sidebar = () => {
                 </li>
               );
             }
-            
+
             // Regular Top Level Menu Item
             const isActive = location.pathname === item.path;
-            
+
             return (
               <li key={item.path}>
                 <Link
                   to={item.path}
+                  onClick={handleTopLevelClick}
                   className={`
                     flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-all duration-200 group
-                    ${isActive 
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 font-medium' 
+                    ${isActive
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 font-medium'
                       : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
                   `}
                 >
@@ -409,8 +454,8 @@ const Sidebar = () => {
             <p className="text-xs text-slate-500 capitalize truncate">{userRole}</p>
           </div>
         </div>
-        
-        <button 
+
+        <button
           onClick={handleLogout}
           className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-red-400 py-2.5 hover:bg-red-500/10 rounded-lg transition-all duration-200"
         >
