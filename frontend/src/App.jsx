@@ -11,6 +11,8 @@ import Settings from "./pages/Settings.jsx";
 import OrderDashboard from "./pages/OrderDashboard.jsx";
 import CreateOrder from "./pages/CreateOrder.jsx"; // Import the new page
 import ManageTeams from "./pages/ManageTeams.jsx";
+import OrderCalendar from "./pages/OrderCalendar.jsx";
+import AccountsTeamManage from "./pages/AccountsTeamManage.jsx";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -136,11 +138,23 @@ function App() {
           }
         />
 
-        {/* Manage Teams Page */}
+        {/* Manage Teams Page (Admin) */}
         <Route
           path="/manage-teams"
           element={
             isAuthenticated ? <ManageTeams /> : <Navigate to="/login" replace />
+          }
+        />
+
+        {/* Accounts Team - Manage Teams */}
+        <Route
+          path="/accounts/manage-teams"
+          element={
+            isAuthenticated && getUserRole() === 'accounts team'
+              ? <AccountsTeamManage />
+              : isAuthenticated
+                ? <Navigate to="/" replace />
+                : <Navigate to="/login" replace />
           }
         />
 
@@ -151,6 +165,15 @@ function App() {
             isAuthenticated ? <Settings /> : <Navigate to="/login" replace />
           }
         />
+
+        {/* Order Calendar - visible to all authenticated roles */}
+        <Route
+          path="/calendar"
+          element={
+            isAuthenticated ? <OrderCalendar /> : <Navigate to="/login" replace />
+          }
+        />
+
         {/* Order Dashboard */}
         <Route 
           path="/orders" 

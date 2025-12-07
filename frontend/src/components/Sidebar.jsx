@@ -2,30 +2,30 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LuLayoutDashboard, 
-  LuUsers, 
   LuBox, 
-  LuFileText, 
-  LuShoppingCart, 
-  LuReceipt, 
-  LuBanknote, 
-  LuClipboardList, 
-  LuUndo2, 
-  LuZap, 
-  LuCreditCard, 
   LuLandmark, 
-  LuStore, 
-  LuChartBar, // ✅ Corrected from LuBarChart
-  LuWrench, 
+  LuTrendingUp, 
+  LuShoppingCart, 
+  LuChartPie, // Fixed: Replaced LuPieChart
+  LuReceipt, 
+  LuFileChartColumn, // Fixed: Replaced LuFileBarChart
+  LuWarehouse, 
+  LuClipboardList, 
   LuSettings, 
   LuLogOut, 
   LuSearch,
-  LuChevronRight
+  LuChevronRight,
+  LuChevronDown,
+  LuUsers,
+  LuCalendarDays
 } from "react-icons/lu";
 import { hasPermission } from '../utils/permissions';
 
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  
+  // Toggles for dropdowns
   const [isAccountsOpen, setIsAccountsOpen] = useState(false);
   const [isPurchaseOpen, setIsPurchaseOpen] = useState(false);
 
@@ -62,72 +62,147 @@ const Sidebar = () => {
   const initial = (displayName || 'U').toString().trim().charAt(0).toUpperCase();
   const userRole = stored.role || 'user';
 
-
-  // Define all menu items with permission-based access
+  // Define menu items with professional structure and icons
   const allMenuItems = [
-    { path: '/home', icon: '🏠', label: 'Home', roles: ['user', 'admin'], permission: null },
+    // 1. Home
+    { 
+      path: '/home', 
+      icon: <LuLayoutDashboard size={20} />, 
+      label: 'Home', 
+      roles: ['user', 'admin'], 
+      permission: null 
+    },
     
-    // Accounts section with dropdown
+    // 2. Items
+    { 
+      path: '/items', 
+      icon: <LuBox size={20} />, 
+      label: 'Items', 
+      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'], 
+      permission: 'viewItems' 
+    },
+
+    // 3. Accounts (Dropdown)
     { 
       path: null, 
-      icon: '💼', 
+      icon: <LuLandmark size={20} />, 
       label: 'Accounts', 
       roles: ['user', 'admin', 'accounts team', 'accounts employee'],
-      permission: null, // Show if any sub-item is accessible
+      permission: null, 
       isDropdown: true,
       stateKey: 'accounts',
       subItems: [
-        { path: '/items', icon: '📦', label: 'Items', roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'], permission: 'viewItems' },
-        { path: '/parties', icon: '👥', label: 'Parties', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewParties' },
-        { path: '/sale/new', icon: '📝', label: 'Sales', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewSales' },
+        // Sales
+        { 
+          path: '/sale/new', 
+          icon: <LuTrendingUp size={18} />, 
+          label: 'Sales', 
+          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          permission: 'viewSales' 
+        },
+        
+        // Purchases (Nested Dropdown)
         { 
           path: null, 
-          icon: '🛒', 
-          label: 'Purchase', 
+          icon: <LuShoppingCart size={18} />, 
+          label: 'Purchases', 
           roles: ['user', 'admin', 'accounts team', 'accounts employee'],
           permission: 'viewPurchases',
           isNestedDropdown: true,
           stateKey: 'purchase',
           subItems: [
-            { path: '/purchase', icon: '📂', label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/purchase/new', icon: '🧾', label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/payment-out', icon: '💸', label: 'Payment Out', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/purchase-order', icon: '📋', label: 'Purchase Order', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/purchase-return', icon: '↩️', label: 'Purchase Return', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
+            { path: '/purchase', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
+            { path: '/purchase/new', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
           ]
+        },
+
+        // Accounts Report
+        { 
+          path: '/reports', 
+          icon: <LuFileChartColumn size={18} />, 
+          label: 'Accounts Report', 
+          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          permission: 'viewReports' 
+        },
+
+        // Manage Teams for Accounts Team
+        {
+          path: '/accounts/manage-teams',
+          icon: <LuUsers size={18} />,
+          label: 'Manage Teams',
+          roles: ['accounts team'],
+          permission: null
+        },
+
+        // Inventory
+        { 
+          path: '/items', // Reusing items path as Inventory usually maps to Items in simple ERPs
+          icon: <LuWarehouse size={18} />, 
+          label: 'Inventory', 
+          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          permission: 'viewItems' 
         },
       ]
     },
     
-    { path: '/manage-teams', icon: '👨‍💼', label: 'Manage Teams', roles: ['admin'], permission: 'manageUsers' },
-    { path: '/quick-billing', icon: '⚡', label: 'Quick Billing', roles: ['user', 'admin'], permission: null },
-    { path: '/expenses', icon: '💳', label: 'Expenses', roles: ['user', 'admin'], permission: null },
-    { path: '/cash-bank', icon: '💰', label: 'Cash & Bank', roles: ['user', 'admin'], permission: null },
-    { path: '/my-online-store', icon: '🏪', label: 'My Online Store', roles: ['user', 'admin'], permission: null },
-    { path: '/reports', icon: '📊', label: 'Reports', roles: ['user', 'admin'], permission: 'viewReports' },
-    { path: '/utilities', icon: '🔧', label: 'Utilities', roles: ['user', 'admin'], permission: null },
-    { path: '/settings', icon: '⚙️', label: 'Settings', roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'], permission: 'viewSettings' },
+    // 4. Orders
+    { 
+      path: '/orders', 
+      icon: <LuClipboardList size={20} />, 
+      label: 'Orders', 
+      roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'], 
+      permission: null 
+    },
+
+    // 5. Order Calendar
+    {
+      path: '/calendar',
+      icon: <LuCalendarDays size={20} />,
+      label: 'Calendar',
+      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'],
+      permission: null
+    },
+
+    // 6. Settings
+    { 
+      path: '/settings', 
+      icon: <LuSettings size={20} />, 
+      label: 'Settings', 
+      roles: ['user', 'admin'], 
+      permission: 'viewSettings' 
+    },
+
+    // 7. Manage Teams for Accounts Team (top-level)
+    { 
+      path: '/accounts/manage-teams', 
+      icon: <LuUsers size={20} />, 
+      label: 'Manage Teams', 
+      roles: ['accounts team'], 
+      permission: null 
+    },
+
+    // Admin Only: Manage Teams
+    { 
+      path: '/manage-teams', 
+      icon: <LuUsers size={20} />, 
+      label: 'Manage Teams', 
+      roles: ['admin'], 
+      permission: 'manageUsers' 
+    },
   ];
 
   // Filter menu items based on user role AND permissions
   const menuItems = allMenuItems.filter(item => {
-    // Check role first
     if (!item.roles.includes(userRole)) return false;
-    
-    // If no permission required, show it
     if (!item.permission) return true;
-    
-    // Check if user has the permission
     return hasPermission(item.permission);
   }).map(item => {
-    // Filter sub-items if dropdown
     if (item.isDropdown && item.subItems) {
       const filteredSubItems = item.subItems.filter(subItem => {
         if (!subItem.roles.includes(userRole)) return false;
         if (!subItem.permission) return true;
         return hasPermission(subItem.permission);
       }).map(subItem => {
-        // Filter nested sub-items if nested dropdown
         if (subItem.isNestedDropdown && subItem.subItems) {
           const filteredNestedItems = subItem.subItems.filter(nestedItem => {
             if (!nestedItem.roles.includes(userRole)) return false;
@@ -139,7 +214,6 @@ const Sidebar = () => {
         return subItem;
       });
       
-      // Only show dropdown if it has accessible sub-items
       if (filteredSubItems.length === 0) return null;
       return { ...item, subItems: filteredSubItems };
     }
@@ -147,180 +221,200 @@ const Sidebar = () => {
   }).filter(item => item !== null);
 
   return (
-    <div className="w-64 bg-slate-800 text-gray-300 h-screen flex flex-col fixed left-0 top-0 border-r border-slate-700 z-50">
+    <div className="w-64 bg-slate-900 text-slate-300 h-screen flex flex-col fixed left-0 top-0 border-r border-slate-800 z-50 font-sans shadow-xl">
       
       {/* Header */}
-      <div className="p-4 border-b border-slate-700 bg-slate-800">
-        <div className="flex items-center gap-3 mb-4 px-1">
-          <span className="text-2xl"></span>
-          <span className="text-xl font-bold text-white tracking-tight">Elints</span>
+      <div className="p-5 border-b border-slate-800 bg-slate-900">
+        <div className="flex items-center gap-3 mb-5 px-1">
+          {/* Logo Placeholder */}
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/30">
+            E
+          </div>
+          <span className="text-xl font-bold text-white tracking-tight">Elints ERP</span>
         </div>
         
         <div className="relative group">
-          <LuSearch className="absolute left-3 top-2.5 text-slate-400" size={14} />
+          <LuSearch className="absolute left-3 top-2.5 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={14} />
           <input 
             type="text" 
-            placeholder="Search (Ctrl+K)" 
-            className="w-full bg-slate-700 text-slate-200 text-xs rounded px-3 pl-9 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors placeholder:text-slate-400"
+            placeholder="Search..." 
+            className="w-full bg-slate-800 text-slate-200 text-xs rounded-lg px-3 pl-9 py-2.5 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all placeholder:text-slate-500"
           />
         </div>
       </div>
 
       {/* Navigation Menu */}
-      <nav className="flex-1 py-2">
-        {menuItems.map((item, index) => {
-          if (item.isDropdown) {
-            // Render main dropdown menu (Accounts)
-            const checkActive = (items) => {
-              return items.some(sub => {
-                if (sub.path === location.pathname) return true;
-                if (sub.isNestedDropdown && sub.subItems) {
-                  return sub.subItems.some(nested => nested.path === location.pathname);
-                }
-                return false;
-              });
-            };
+      <nav className="flex-1 py-4 overflow-y-auto custom-scrollbar">
+        <ul className="space-y-1 px-3">
+          {menuItems.map((item, index) => {
+            if (item.isDropdown) {
+              const checkActive = (items) => {
+                return items.some(sub => {
+                  if (sub.path === location.pathname) return true;
+                  if (sub.isNestedDropdown && sub.subItems) {
+                    return sub.subItems.some(nested => nested.path === location.pathname);
+                  }
+                  return false;
+                });
+              };
+              
+              const isAnySubItemActive = checkActive(item.subItems);
+              const isOpen = isAccountsOpen; 
+              
+              return (
+                <li key={`dropdown-${index}`}>
+                  <div
+                    onClick={() => setIsAccountsOpen(!isAccountsOpen)}
+                    className={`
+                      flex items-center justify-between relative py-3 px-3 rounded-lg cursor-pointer transition-all duration-200 group
+                      ${isAnySubItemActive || isOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}
+                    `}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${isAnySubItemActive || isOpen ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>
+                        {item.icon}
+                      </span>
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </div>
+                    <LuChevronRight 
+                      size={14} 
+                      className={`transition-transform duration-200 ${isOpen ? 'rotate-90 text-blue-500' : 'text-slate-600'}`} 
+                    />
+                  </div>
+                  
+                  {/* Dropdown Content */}
+                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                    <ul className="space-y-1 pl-3 border-l-2 border-slate-800 ml-5">
+                      {item.subItems.map((subItem, subIndex) => {
+                        if (subItem.isNestedDropdown) {
+                          // Nested Dropdown (Purchases)
+                          const isNestedOpen = isPurchaseOpen;
+                          const isAnyNestedActive = subItem.subItems.some(nested => location.pathname === nested.path);
+                          
+                          return (
+                            <li key={`nested-${subIndex}`}>
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsPurchaseOpen(!isPurchaseOpen);
+                                }}
+                                className={`
+                                  flex items-center justify-between py-2 px-3 rounded-md cursor-pointer transition-colors text-sm group/nested
+                                  ${isAnyNestedActive ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}
+                                `}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className={isAnyNestedActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
+                                    {subItem.icon}
+                                  </span>
+                                  <span>{subItem.label}</span>
+                                </div>
+                                <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
+                              </div>
+                              
+                              {/* Nested Content */}
+                              {isNestedOpen && (
+                                <ul className="mt-1 space-y-1 pl-3 border-l border-slate-800 ml-4 bg-slate-900/50 py-1 rounded-r-lg">
+                                  {subItem.subItems.map((nestedItem) => {
+                                    const isNestedActive = location.pathname === nestedItem.path;
+                                    return (
+                                      <li key={nestedItem.path}>
+                                        <Link
+                                          to={nestedItem.path}
+                                          className={`
+                                            flex items-center gap-3 py-2 px-3 rounded-md text-xs transition-all
+                                            ${isNestedActive 
+                                              ? 'bg-blue-600/10 text-blue-400 font-medium' 
+                                              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}
+                                          `}
+                                        >
+                                          <span className={isNestedActive ? 'text-blue-500' : 'text-slate-600'}>
+                                            {nestedItem.icon}
+                                          </span>
+                                          {nestedItem.label}
+                                        </Link>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                            </li>
+                          );
+                        }
+                        
+                        // Regular Sub Item
+                        const isSubActive = location.pathname === subItem.path;
+                        return (
+                          <li key={subItem.path}>
+                            <Link
+                              to={subItem.path}
+                              className={`
+                                flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-all
+                                ${isSubActive 
+                                  ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20' 
+                                  : 'text-slate-400 hover:text-white hover:bg-slate-800'}
+                              `}
+                            >
+                              <span className={isSubActive ? 'text-white' : 'text-slate-500'}>
+                                {subItem.icon}
+                              </span>
+                              {subItem.label}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </li>
+              );
+            }
             
-            const isAnySubItemActive = checkActive(item.subItems);
-            const isOpen = isAccountsOpen;
+            // Regular Top Level Menu Item
+            const isActive = location.pathname === item.path;
             
             return (
-              <div key={`dropdown-${index}`}>
-                <div
-                  onClick={() => setIsAccountsOpen(!isAccountsOpen)}
-                  className={`flex items-center relative py-3 cursor-pointer transition-colors ${
-                    isAnySubItemActive ? 'bg-orange-500/20 text-white' : 'text-gray-300 hover:bg-white/10'
-                  } pl-5`}
+              <li key={item.path}>
+                <Link
+                  to={item.path}
+                  className={`
+                    flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-all duration-200 group
+                    ${isActive 
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 font-medium' 
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
+                  `}
                 >
-                  <span className="mr-3 text-lg">{item.icon}</span>
+                  <span className={`
+                    text-lg transition-colors
+                    ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}
+                  `}>
+                    {item.icon}
+                  </span>
                   <span className="flex-1 text-sm">{item.label}</span>
-                  <span className={`mr-4 transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
-                </div>
-                
-                {isOpen && (
-                  <div className="bg-slate-900/50" onClick={(e) => e.stopPropagation()}>
-                    {item.subItems.filter(sub => sub.roles.includes(userRole)).map((subItem, subIndex) => {
-                      if (subItem.isNestedDropdown) {
-                        // Render nested dropdown (Purchase)
-                        const isAnyNestedActive = subItem.subItems.some(nested => location.pathname === nested.path);
-                        const isNestedOpen = isPurchaseOpen;
-                        
-                        return (
-                          <div key={`nested-${subIndex}`}>
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsPurchaseOpen(!isPurchaseOpen);
-                              }}
-                              className={`flex items-center relative py-2 cursor-pointer transition-colors ${
-                                isAnyNestedActive ? 'bg-orange-500/20 text-white' : 'text-gray-300 hover:bg-white/10'
-                              } pl-12`}
-                            >
-                              <span className="mr-3 text-base">{subItem.icon}</span>
-                              <span className="flex-1 text-sm">{subItem.label}</span>
-                              <span className={`mr-4 transition-transform text-xs ${isNestedOpen ? 'rotate-90' : ''}`}>›</span>
-                            </div>
-                            
-                            {isNestedOpen && (
-                              <div className="bg-slate-900/70" onClick={(e) => e.stopPropagation()}>
-                                {subItem.subItems.filter(nested => nested.roles.includes(userRole)).map((nestedItem) => {
-                                  const isNestedActive = location.pathname === nestedItem.path;
-                                  return (
-                                    <Link
-                                      key={nestedItem.path}
-                                      to={nestedItem.path}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className={`flex items-center relative py-2 cursor-pointer transition-colors ${
-                                        isNestedActive ? 'bg-orange-500/20 text-white' : 'text-gray-300 hover:bg-white/10'
-                                      } pl-16`}
-                                    >
-                                      {isNestedActive && (
-                                        <div className="absolute left-0 w-1 h-6 bg-orange-500 rounded-r-full"></div>
-                                      )}
-                                      <span className="mr-3 text-sm">{nestedItem.icon}</span>
-                                      <span className="flex-1 text-xs">{nestedItem.label}</span>
-                                    </Link>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      
-                      // Render regular sub-item
-                      const isSubActive = location.pathname === subItem.path;
-                      return (
-                        <Link
-                          key={subItem.path}
-                          to={subItem.path}
-                          onClick={(e) => e.stopPropagation()}
-                          className={`flex items-center relative py-2 cursor-pointer transition-colors ${
-                            isSubActive ? 'bg-orange-500/20 text-white' : 'text-gray-300 hover:bg-white/10'
-                          } pl-12`}
-                        >
-                          {isSubActive && (
-                            <div className="absolute left-0 w-1 h-6 bg-orange-500 rounded-r-full"></div>
-                          )}
-                          <span className="mr-3 text-base">{subItem.icon}</span>
-                          <span className="flex-1 text-sm">{subItem.label}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                  {isActive && <div className="w-1.5 h-1.5 rounded-full bg-white/80"></div>}
+                </Link>
+              </li>
             );
-          }
-          
-          // Render regular menu item
-          const isActive = location.pathname === item.path;
-          
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`
-                flex items-center px-5 py-2.5 cursor-pointer transition-colors relative
-                ${isActive 
-                  ? 'bg-blue-600/10 text-blue-400 border-l-4 border-blue-500' 
-                  : 'hover:bg-slate-700/50 text-slate-300 border-l-4 border-transparent'
-                }
-                ${item.indent ? 'pl-10 text-sm' : ''}
-              `}
-            >
-              <span className={`
-                mr-3 text-lg
-                ${isActive ? 'text-blue-400' : 'text-slate-400'}
-                ${item.indent ? 'text-base' : ''}
-              `}>
-                {item.icon}
-              </span>
-              
-              <span className="flex-1 truncate font-medium text-sm">{item.label}</span>
-            </Link>
-          );
-        })}
+          })}
+        </ul>
       </nav>
 
       {/* Footer / User Profile */}
-      <div className="p-4 border-t border-slate-700 bg-slate-800">
-        <div className="bg-slate-700/30 rounded-md p-2 mb-2 flex items-center gap-3 cursor-pointer hover:bg-slate-700/50 transition-colors">
-          <div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+      <div className="p-4 border-t border-slate-800 bg-slate-900">
+        <div className="bg-slate-800/50 rounded-xl p-3 mb-2 flex items-center gap-3 cursor-pointer hover:bg-slate-800 transition-colors border border-slate-800 hover:border-slate-700">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-sm shadow-inner">
             {initial}
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium text-white truncate">{displayName}</p>
-            <p className="text-xs text-slate-400 capitalize truncate">{userRole}</p>
+            <p className="text-sm font-semibold text-slate-200 truncate">{displayName}</p>
+            <p className="text-xs text-slate-500 capitalize truncate">{userRole}</p>
           </div>
-          <LuChevronRight className="text-slate-500" size={16} />
         </div>
         
         <button 
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-red-400 py-2 hover:bg-red-500/10 rounded transition-colors"
+          className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-red-400 py-2.5 hover:bg-red-500/10 rounded-lg transition-all duration-200"
         >
-          <LuLogOut size={14} />
+          <LuLogOut size={16} />
           <span>Sign Out</span>
         </button>
       </div>
