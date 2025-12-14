@@ -30,7 +30,7 @@ const orderSchema = new mongoose.Schema({
     default: 'New'
   },
 
-  // Reference to the accounts employee assigned to this order
+  // Reference to the employee assigned to this order
   assignedAccountEmployee: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -53,8 +53,13 @@ const orderSchema = new mongoose.Schema({
     rate: Number,
     amount: Number,
     deliveryDate: { type: Date },
+<<<<<<< HEAD
     // Priority moved to item-level (High applies per-item)
     priority: { type: String, enum: ['Normal', 'High'], default: 'Normal' }
+=======
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    completed: { type: Boolean, default: false }
+>>>>>>> 1819e2b (orders beku testing ge)
   }],
 
   totalAmount: { type: Number, default: 0 },

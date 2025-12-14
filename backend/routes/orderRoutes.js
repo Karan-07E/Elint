@@ -155,7 +155,7 @@ router.get('/', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
 });
 
 // Get assigned orders formatted for Dashboard (Employee View)
-router.get('/mine', authenticateToken, async (req, res) => {
+router.get('/my-orders', authenticateToken, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.per_page) || 20;
@@ -163,12 +163,8 @@ router.get('/mine', authenticateToken, async (req, res) => {
 
     const { status, priority, range } = req.query;
 
-    // Base filter: Assigned to current user
+    // Base filter: Find all non-deleted orders
     const filter = {
-      $or: [
-        { assignedAccountEmployee: req.user.id },
-        { accountsEmployee: req.user.id }
-      ],
       status: { $ne: 'Deleted' }
     };
 
@@ -202,43 +198,71 @@ router.get('/mine', authenticateToken, async (req, res) => {
     const allMatches = await Order.find(filter)
       .populate('party', 'name')
       .populate('items.item', 'name')
+      .populate('items.assignedTo', 'name employeeId')
+      .populate('assignedAccountEmployee', 'name employeeId')
       .limit(500);
 
     // 2. Compute Overdue & Map
     const priorityWeight = { 'High': 3, 'Urgent': 3, 'Normal': 2, 'Low': 1 };
 
     const mappedOrders = allMatches.map(o => {
-      const deadline = o.deadline ? new Date(o.deadline) : null;
+      const deadline = o.estimatedDeliveryDate ? new Date(o.estimatedDeliveryDate) : null;
+      const startDate = o.poDate ? new Date(o.poDate) : null;
       const isOverdue = deadline && deadline < now && o.status !== 'Completed';
 
+<<<<<<< HEAD
       // Derive order-level priority from items (High if any item is High)
       const derivedPriority = (o.items || []).some(it => (it.priority || '').toLowerCase() === 'high') ? 'High' : (o.priority || 'Normal');
+=======
+      // Filter items to only show those assigned to current employee
+      const userItems = o.items.filter(item => {
+        if (!item.assignedTo) return false;
+        const assignedToId = item.assignedTo._id ? item.assignedTo._id.toString() : item.assignedTo.toString();
+        return assignedToId === req.user.id;
+      });
+
+      // Calculate total for user's items only
+      const userTotal = userItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+>>>>>>> 1819e2b (orders beku testing ge)
 
       return {
         id: o._id,
         po_number: o.poNumber,
         customer_name: o.party?.name || 'Unknown',
+<<<<<<< HEAD
         deadline: o.deadline,
         priority: derivedPriority,
         amount: o.totalAmount,
         items: o.items,
+=======
+        startDate: startDate,
+        deadline: deadline,
+        priority: o.priority,
+        amount: userTotal,
+        totalAmount: o.totalAmount,
+        items: userItems,
+>>>>>>> 1819e2b (orders beku testing ge)
         status: o.status,
         overdue: isOverdue,
+        assignedTo: o.assignedAccountEmployee,
         _rawDeadline: deadline ? deadline.getTime() : Number.MAX_SAFE_INTEGER,
         _priorityVal: priorityWeight[derivedPriority] || 0
       };
     });
 
+    // Filter out orders with no items assigned to this employee
+    const ordersWithItems = mappedOrders.filter(o => o.items.length > 0);
+
     // 3. Sort: Overdue (desc) -> Priority (desc) -> Deadline (asc)
-    mappedOrders.sort((a, b) => {
+    ordersWithItems.sort((a, b) => {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
       if (a._priorityVal !== b._priorityVal) return b._priorityVal - a._priorityVal;
       return a._rawDeadline - b._rawDeadline;
     });
 
     // 4. Paginate
-    const total = mappedOrders.length;
-    const paginatedOrders = mappedOrders.slice(skip, skip + limit);
+    const total = ordersWithItems.length;
+    const paginatedOrders = ordersWithItems.slice(skip, skip + limit);
 
     // Clean internal sort keys
     const finalOrders = paginatedOrders.map(({ _rawDeadline, _priorityVal, ...rest }) => rest);
@@ -392,11 +416,86 @@ router.patch('/:id/assign', authenticateToken, allowAccountsOrAdmin, async (req,
   try {
     const { employeeId } = req.body;
     if (!employeeId) return res.status(400).json({ message: 'employeeId required' });
-    const order = await Order.findByIdAndUpdate(req.params.id, { assignedAccountEmployee: employeeId }, { new: true })
-      .populate('party', 'name phone')
-      .populate('items.item', 'name');
+    
+    // Find the order first
+    const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    res.json(order);
+    
+    // Update order-level assignment
+    order.assignedAccountEmployee = employeeId;
+    
+    // Also assign ALL items to the same employee
+    order.items.forEach((item, index) => {
+      order.items[index].assignedTo = employeeId;
+    });
+    
+    await order.save();
+    
+    // Populate and return
+    const updatedOrder = await Order.findById(req.params.id)
+      .populate('party', 'name phone')
+      .populate('items.item', 'name')
+      .populate('items.assignedTo', 'name employeeId')
+      .populate('assignedAccountEmployee', 'name employeeId');
+    
+    res.json(updatedOrder);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Assign items to employees (accounts team or admin)
+router.patch('/:id/assign-items', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
+  try {
+    const { itemAssignments } = req.body; // Array of { itemIndex, employeeId }
+    if (!itemAssignments || !Array.isArray(itemAssignments)) {
+      return res.status(400).json({ message: 'itemAssignments array required' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Update each item's assignedTo field
+    itemAssignments.forEach(({ itemIndex, employeeId }) => {
+      if (itemIndex >= 0 && itemIndex < order.items.length) {
+        order.items[itemIndex].assignedTo = employeeId || null;
+      }
+    });
+
+    await order.save();
+    
+    const updatedOrder = await Order.findById(req.params.id)
+      .populate('party', 'name phone')
+      .populate('items.item', 'name')
+      .populate('items.assignedTo', 'name employeeId');
+    
+    res.json(updatedOrder);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update item completion status
+router.patch('/:id/item-completion', authenticateToken, async (req, res) => {
+  try {
+    const { itemIndex, completed } = req.body;
+    if (itemIndex === undefined || completed === undefined) {
+      return res.status(400).json({ message: 'itemIndex and completed required' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (itemIndex < 0 || itemIndex >= order.items.length) {
+      return res.status(400).json({ message: 'Invalid item index' });
+    }
+
+    order.items[itemIndex].completed = completed;
+    await order.save();
+
+    res.json({ message: 'Item completion status updated', item: order.items[itemIndex] });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

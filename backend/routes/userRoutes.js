@@ -52,12 +52,12 @@ router.get('/', authenticateToken, isAdmin, async (req, res) => {
 // New route: GET accounts team employees
 router.get('/team/employees', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
   try {
-    const employees = await User.find({ role: 'accounts employee' })
+    const employees = await User.find({ role: 'employee' })
       .select('-password')
       .sort({ employeeId: 1 });
     res.json(employees);
   } catch (error) {
-    console.error('Get accounts employees error:', error);
+    console.error('Get employees error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -89,34 +89,19 @@ const generateEmployeeId = async (role, teamLeaderId) => {
       .sort({ employeeId: -1 });
     const lastNum = lastTeam ? parseInt(lastTeam.employeeId.substring(4)) : 0;
     return `PROD${String(lastNum + 1).padStart(2, '0')}`;
-  } else if (role === 'accounts employee' && teamLeaderId) {
-    // Get team leader's ID prefix
+  } else if (role === 'employee' && teamLeaderId) {
+    // Get team leader to validate
     const teamLeader = await User.findById(teamLeaderId);
     if (!teamLeader || !teamLeader.employeeId) {
       throw new Error('Invalid team leader');
     }
-    // Find highest employee number under this team
+    // Find highest employee number across ALL employees
     const lastEmp = await User.findOne({
-      role: 'accounts employee',
-      teamLeaderId: teamLeaderId,
-      employeeId: { $regex: new RegExp(`^${teamLeader.employeeId}EMP\\d+$`) }
+      role: 'employee',
+      employeeId: { $regex: /^EMP\d+$/ }
     }).sort({ employeeId: -1 });
-    const lastNum = lastEmp ? parseInt(lastEmp.employeeId.substring(teamLeader.employeeId.length + 3)) : 0;
-    return `${teamLeader.employeeId}EMP${String(lastNum + 1).padStart(2, '0')}`;
-  } else if (role === 'product employee' && teamLeaderId) {
-    // Get team leader's ID prefix
-    const teamLeader = await User.findById(teamLeaderId);
-    if (!teamLeader || !teamLeader.employeeId) {
-      throw new Error('Invalid team leader');
-    }
-    // Find highest employee number under this team
-    const lastEmp = await User.findOne({
-      role: 'product employee',
-      teamLeaderId: teamLeaderId,
-      employeeId: { $regex: new RegExp(`^${teamLeader.employeeId}EMP\\d+$`) }
-    }).sort({ employeeId: -1 });
-    const lastNum = lastEmp ? parseInt(lastEmp.employeeId.substring(teamLeader.employeeId.length + 3)) : 0;
-    return `${teamLeader.employeeId}EMP${String(lastNum + 1).padStart(2, '0')}`;
+    const lastNum = lastEmp ? parseInt(lastEmp.employeeId.substring(3)) : 0;
+    return `EMP${String(lastNum + 1).padStart(2, '0')}`;
   }
   return null; // admin and regular users don't get employee IDs
 };
@@ -131,8 +116,8 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     }
 
     // Validate employee roles require teamLeaderId
-    if ((role === 'accounts employee' || role === 'product employee') && !teamLeaderId) {
-      return res.status(400).json({ message: 'Team leader is required for employee roles' });
+    if (role === 'employee' && !teamLeaderId) {
+      return res.status(400).json({ message: 'Team leader is required for employee role' });
     }
 
     // Check if user already exists

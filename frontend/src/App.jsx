@@ -208,7 +208,7 @@ function App() {
                 <Route
                     path="/accounts/manage-orders"
                     element={
-                        isAuthenticated && (getUserRole() === 'accounts team' || getUserRole() === 'accounts employee')
+                        isAuthenticated && (getUserRole() === 'accounts team' || getUserRole() === 'employee')
                             ? <ManageOrders />
                             : isAuthenticated
                                 ? <AccessDenied />

@@ -105,7 +105,7 @@ const Sidebar = () => {
       path: '/items', 
       icon: <LuBox size={20} />, 
       label: 'Items', 
-      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'], 
+      roles: ['user', 'admin', 'accounts team', 'employee', 'product team'], 
       permission: 'viewItems' 
     },
 
@@ -123,7 +123,7 @@ const Sidebar = () => {
       path: null, 
       icon: <LuLandmark size={20} />, 
       label: 'Accounts', 
-      roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+      roles: ['user', 'admin', 'accounts team'],
       permission: null, 
       isDropdown: true,
       stateKey: 'accounts',
@@ -133,7 +133,7 @@ const Sidebar = () => {
           path: '/sale/new', 
           icon: <LuTrendingUp size={18} />, 
           label: 'Sales', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewSales' 
         },
         // Parties
@@ -141,7 +141,7 @@ const Sidebar = () => {
           path: '/parties', 
           icon: <LuUsers size={18} />, 
           label: 'Parties', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewParties' 
         },
         
@@ -150,13 +150,13 @@ const Sidebar = () => {
           path: null, 
           icon: <LuShoppingCart size={18} />, 
           label: 'Purchases', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+          roles: ['user', 'admin', 'accounts team'],
           permission: 'viewPurchases',
           isNestedDropdown: true,
           stateKey: 'purchase',
           subItems: [
-            { path: '/purchase', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/purchase/new', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
+            { path: '/purchase', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team'], permission: 'viewPurchases' },
+            { path: '/purchase/new', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team'], permission: 'viewPurchases' },
           ]
         },
 
@@ -165,7 +165,7 @@ const Sidebar = () => {
           path: '/reports', 
           icon: <LuFileChartColumn size={18} />, 
           label: 'Reports', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewReports' 
         },
 
@@ -174,7 +174,7 @@ const Sidebar = () => {
           path: '/accounts/manage-orders',
           icon: <LuClipboardList size={18} />,
           label: 'Manage Orders',
-          roles: ['accounts team', 'accounts employee'],
+          roles: ['accounts team'],
           permission: null
         },
 
@@ -183,7 +183,7 @@ const Sidebar = () => {
           path: '/items', // Reusing items path
           icon: <LuWarehouse size={18} />, 
           label: 'Inventory', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewItems' 
         },
       ]
@@ -194,8 +194,8 @@ const Sidebar = () => {
       path: '/orders', 
       icon: <LuClipboardList size={20} />, 
       label: 'Orders', 
-      roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'], 
-      permission: null 
+      roles: ['user', 'admin', 'product team', 'accounts team'], 
+      permission: 'viewOrders' 
     },
 
     // 5. Order Calendar
@@ -203,7 +203,7 @@ const Sidebar = () => {
       path: '/calendar',
       icon: <LuCalendarDays size={20} />,
       label: 'Calendar',
-      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'],
+      roles: ['user', 'admin', 'accounts team', 'employee', 'product team'],
       permission: null
     },
 

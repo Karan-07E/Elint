@@ -34,6 +34,7 @@ export const canViewSection = (section) => {
     parties: 'viewParties',
     sales: 'viewSales',
     purchases: 'viewPurchases',
+    orders: 'viewOrders',
     reports: 'viewReports',
     settings: 'viewSettings',
     manageTeams: 'manageUsers'
@@ -48,7 +49,8 @@ export const canCreate = (entity) => {
     items: 'createItems',
     parties: 'createParties',
     sales: 'createSales',
-    purchases: 'createPurchases'
+    purchases: 'createPurchases',
+    orders: 'createOrders'
   };
   
   return hasPermission(createPermissions[entity]);
@@ -60,6 +62,7 @@ export const canEdit = (entity) => {
     parties: 'editParties',
     sales: 'editSales',
     purchases: 'editPurchases',
+    orders: 'editOrders',
     settings: 'editSettings'
   };
   
@@ -71,7 +74,8 @@ export const canDelete = (entity) => {
     items: 'deleteItems',
     parties: 'deleteParties',
     sales: 'deleteSales',
-    purchases: 'deletePurchases'
+    purchases: 'deletePurchases',
+    orders: 'deleteOrders'
   };
   
   return hasPermission(deletePermissions[entity]);

@@ -87,6 +87,17 @@ export default function ItemPage() {
   // States for item name dropdown
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [itemNameSearch, setItemNameSearch] = useState("");
+  
+  // States for category dropdown
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+  
+  // States for unit dropdown
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+  const [unitSearch, setUnitSearch] = useState("");
+
+  // State for drag and drop
+  const [draggedSubStep, setDraggedSubStep] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -104,6 +115,16 @@ export default function ItemPage() {
       setItemNameSearch(form.name);
     }
   }, [form.name]);
+
+  // Sync categorySearch and unitSearch with form values
+  useEffect(() => {
+    if (form.category && !categorySearch) {
+      setCategorySearch(form.category);
+    }
+    if (form.unit && !unitSearch) {
+      setUnitSearch(form.unit);
+    }
+  }, [form.category, form.unit]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -173,6 +194,10 @@ export default function ItemPage() {
                 ? data.inspectionChecks
                 : f.inspectionChecks,
           }));
+          // Initialize search fields
+          setItemNameSearch(data.name || "");
+          setCategorySearch(data.category || "");
+          setUnitSearch(data.unit || "");
         })
         .catch((err) => {
           console.error("load item error", err);
@@ -497,6 +522,8 @@ export default function ItemPage() {
           : f.inspectionChecks,
     }));
     setItemNameSearch(selectedItem.name);
+    setCategorySearch(selectedItem.category || "");
+    setUnitSearch(selectedItem.unit || "");
     setShowItemDropdown(false);
   };
 
@@ -712,7 +739,7 @@ export default function ItemPage() {
       {/* Top Header Bar */}
       <div className="ml-64 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-orange-500 text-xl font-bold">🔥 Elints</span>
+          <span className="text-black text-2xl font-bold">Items</span>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-gray-600">Customer Support:</span>
@@ -781,14 +808,18 @@ export default function ItemPage() {
                       <p className="text-sm text-gray-600">Unit</p>
                       <p className="text-sm font-medium text-gray-900">{selectedItem?.unit || '-'}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Sale Price</p>
-                      <p className="text-sm font-medium text-gray-900">₹{selectedItem?.salePrice || '0'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Purchase Price</p>
-                      <p className="text-sm font-medium text-gray-900">₹{selectedItem?.purchasePrice || '0'}</p>
-                    </div>
+                    {userRole !== 'employee' && (
+                      <>
+                        <div>
+                          <p className="text-sm text-gray-600">Sale Price</p>
+                          <p className="text-sm font-medium text-gray-900">₹{selectedItem?.salePrice || '0'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Purchase Price</p>
+                          <p className="text-sm font-medium text-gray-900">₹{selectedItem?.purchasePrice || '0'}</p>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <p className="text-sm text-gray-600">Stock</p>
                       <p className="text-sm font-medium text-gray-900">{selectedItem?.openingQty || '0'} {selectedItem?.unit || ''}</p>
@@ -972,9 +1003,11 @@ export default function ItemPage() {
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Name</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Type</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Sale Price</th>
+                          {userRole !== 'employee' && <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Sale Price</th>}
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Stock</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Actions</th>
+                          {(userRole === 'product team' || canEdit('items') || canDelete('items')) && (
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Actions</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -997,41 +1030,45 @@ export default function ItemPage() {
                               </span>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600 capitalize">{item.category || '-'}</td>
-                            <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                              ₹{item.salePrice || '0'}
-                            </td>
+                            {userRole !== 'employee' && (
+                              <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                                ₹{item.salePrice || '0'}
+                              </td>
+                            )}
                             <td className="py-3 px-4 text-sm text-gray-600">{item.openingQty || '0'} {item.unit || ''}</td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                {userRole === 'product team' ? (
-                                  <button
-                                    onClick={() => handleViewProgress(item)}
-                                    className="text-white bg-green-500 hover:bg-green-600 text-sm font-medium p-2 rounded-lg"
-                                  >
-                                    View Progress
-                                  </button>
-                                ) : (
-                                  <>
-                                    {canEdit('items') && (
-                                      <button
-                                        onClick={() => handleEditItem(item)}
-                                        className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
-                                      >
-                                        Edit
-                                      </button>
-                                    )}
-                                    {canDelete('items') && (
-                                      <button
-                                        onClick={() => handleDeleteItem(item._id)}
-                                        className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
-                                      >
-                                        Delete
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </td>
+                            {(userRole === 'product team' || canEdit('items') || canDelete('items')) && (
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  {userRole === 'product team' ? (
+                                    <button
+                                      onClick={() => handleViewProgress(item)}
+                                      className="text-white bg-green-500 hover:bg-green-600 text-sm font-medium p-2 rounded-lg"
+                                    >
+                                      View Progress
+                                    </button>
+                                  ) : (
+                                    <>
+                                      {canEdit('items') && (
+                                        <button
+                                          onClick={() => handleEditItem(item)}
+                                          className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                        >
+                                          Edit
+                                        </button>
+                                      )}
+                                      {canDelete('items') && (
+                                        <button
+                                          onClick={() => handleDeleteItem(item._id)}
+                                          className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -1061,8 +1098,20 @@ export default function ItemPage() {
             </div>
 
             <div className="px-6 py-6">
-              {/* Row 1: Item Name, HSN, Select Unit */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
+              {/* Row 1: Item Code, Item Name, HSN, Category */}
+              <div className="grid grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1.5">
+                    Item Code
+                  </label>
+                  <input
+                    value={form.code}
+                    onChange={(e) => updateField("code", e.target.value)}
+                    placeholder="Item Code"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
                 <div className="relative item-name-dropdown-container">
                   <label className="block text-sm text-gray-600 mb-1.5">
                     Item Name *
@@ -1129,36 +1178,106 @@ export default function ItemPage() {
                       className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder=""
                     />
-                    <button className="text-gray-400 hover:text-gray-600">
-                      🔍
-                    </button>
                   </div>
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="block text-sm text-gray-600 mb-1.5">
-                    Select Unit
+                    Category
                   </label>
-                  <select
-                    value={form.unit}
-                    onChange={(e) => updateField("unit", e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                  >
-                    <option value="">Select Unit</option>
-                    <option value="pieces">Pieces (pcs)</option>
-                    <option value="kg">Kilograms (kg)</option>
-                    <option value="grams">Grams (g)</option>
-                    <option value="liters">Liters (L)</option>
-                    <option value="meters">Meters (m)</option>
-                    <option value="boxes">Boxes</option>
-                    <option value="dozens">Dozens</option>
-                  </select>
+                  <div className="relative">
+                    <input
+                      value={categorySearch}
+                      onChange={(e) => {
+                        setCategorySearch(e.target.value);
+                        updateField("category", e.target.value);
+                        setShowCategoryDropdown(true);
+                      }}
+                      onFocus={() => setShowCategoryDropdown(true)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                      placeholder="Type or select category"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showCategoryDropdown ? '▲' : '▼'}
+                    </button>
+                    {showCategoryDropdown && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                        {['electronics', 'furniture', 'clothing', 'food', 'raw materials', 'tools', 'accessories', 'machinery']
+                          .filter(cat => cat.toLowerCase().includes(categorySearch.toLowerCase()))
+                          .map((category) => (
+                            <div
+                              key={category}
+                              onClick={() => {
+                                updateField("category", category);
+                                setCategorySearch(category);
+                                setShowCategoryDropdown(false);
+                              }}
+                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                            >
+                              {category.charAt(0).toUpperCase() + category.slice(1)}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Row 2: Add Item Image */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="flex items-end">
+              {/* Row 2: Select Unit, Add Item Image, Image Preview */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="relative">
+                  <label className="block text-sm text-gray-600 mb-1.5">
+                    Select Unit
+                  </label>
+                  <div className="relative">
+                    <input
+                      value={unitSearch}
+                      onChange={(e) => {
+                        setUnitSearch(e.target.value);
+                        updateField("unit", e.target.value);
+                        setShowUnitDropdown(true);
+                      }}
+                      onFocus={() => setShowUnitDropdown(true)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                      placeholder="Type or select unit"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUnitDropdown(!showUnitDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showUnitDropdown ? '▲' : '▼'}
+                    </button>
+                    {showUnitDropdown && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                        {['pieces', 'kg', 'grams', 'liters', 'meters', 'boxes', 'dozens', 'rolls', 'sheets', 'units']
+                          .filter(unit => unit.toLowerCase().includes(unitSearch.toLowerCase()))
+                          .map((unit) => (
+                            <div
+                              key={unit}
+                              onClick={() => {
+                                updateField("unit", unit);
+                                setUnitSearch(unit);
+                                setShowUnitDropdown(false);
+                              }}
+                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                            >
+                              {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1.5">
+                    Add Image
+                  </label>
                   <button
                     className="w-full bg-blue-100 text-blue-600 px-4 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2"
                     onClick={() =>
@@ -1174,43 +1293,6 @@ export default function ItemPage() {
                     className="hidden"
                     onChange={handleImageSelect}
                   />
-                </div>
-              </div>
-
-              {/* Row 3: Category, Item Code, Image Preview */}
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5">
-                    Category
-                  </label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => updateField("category", e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                  >
-                    <option value="">Select Category</option>
-                    <option value="electronics">Electronics</option>
-                    <option value="furniture">Furniture</option>
-                    <option value="clothing">Clothing</option>
-                    <option value="food">Food & Beverage</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5">
-                    Item Code
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      value={form.code}
-                      onChange={(e) => updateField("code", e.target.value)}
-                      placeholder="Item Code"
-                      className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <button className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 rounded text-sm font-medium transition-colors whitespace-nowrap">
-                      Assign Code
-                    </button>
-                  </div>
                 </div>
 
                 <div className="flex items-center justify-center">
@@ -1231,16 +1313,18 @@ export default function ItemPage() {
               {/* Tabs */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex gap-8 border-b border-gray-200 mb-6">
-                  <button
-                    onClick={() => setActiveTab("pricing")}
-                    className={`pb-3 text-sm font-medium transition-all ${
-                      activeTab === "pricing"
-                        ? "border-b-2 border-red-500 text-red-600"
-                        : "text-gray-600 hover:text-gray-800"
-                    }`}
-                  >
-                    Pricing
-                  </button>
+                  {userRole !== 'employee' && (
+                    <button
+                      onClick={() => setActiveTab("pricing")}
+                      className={`pb-3 text-sm font-medium transition-all ${
+                        activeTab === "pricing"
+                          ? "border-b-2 border-red-500 text-red-600"
+                          : "text-gray-600 hover:text-gray-800"
+                      }`}
+                    >
+                      Pricing
+                    </button>
+                  )}
                   <button
                     onClick={() => setActiveTab("stock")}
                     className={`pb-3 text-sm font-medium transition-all ${
@@ -1293,7 +1377,7 @@ export default function ItemPage() {
                   </button>
                 </div>
 
-                {activeTab === "pricing" && (
+                {activeTab === "pricing" && userRole !== 'employee' && (
                   <div>
                     {/* Sale Price Section */}
                     <div className="mb-6">
@@ -1377,17 +1461,35 @@ export default function ItemPage() {
                         <div className="space-y-2">
                           <select
                             value={form.taxRate}
-                            onChange={(e) =>
-                              updateField("taxRate", e.target.value)
-                            }
+                            onChange={(e) => {
+                              const selectedTax = e.target.value;
+                              updateField("taxRate", selectedTax);
+                              // Auto-change to 'with tax' if any tax other than 'None' is selected
+                              if (selectedTax !== 'None') {
+                                updateField("salePriceTaxType", "with");
+                                updateField("purchasePriceTaxType", "with");
+                              }
+                            }}
                             className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
                           >
                             <option>None</option>
-                            <option>GST @ 0%</option>
-                            <option>GST @ 5%</option>
-                            <option>GST @ 12%</option>
-                            <option>GST @ 18%</option>
-                            <option>GST @ 28%</option>
+                            <option>IGST@0%</option>
+                            <option>GST@0%</option>
+                            <option>IGST@ 0.25%</option>
+                            <option>GST@0.25%</option>
+                            <option>IGST@3%</option>
+                            <option>GST@3%</option>
+                            <option>IGST@5%</option>
+                            <option>GST@5%</option>
+                            <option>IGST@12%</option>
+                            <option>GST@12%</option>
+                            <option>IGST@18%</option>
+                            <option>GST@18%</option>
+                            <option>IGST@28%</option>
+                            <option>GST@28%</option>
+                            <option>Exempt</option>
+                            <option>IGST@40%</option>
+                            <option>GST@40%</option>
                           </select>
                         </div>
                       </div>
@@ -1413,19 +1515,21 @@ export default function ItemPage() {
                           className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1.5">
-                          At Price
-                        </label>
-                        <input
-                          value={form.atPrice}
-                          onChange={(e) =>
-                            updateField("atPrice", e.target.value)
-                          }
-                          placeholder="At Price"
-                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
+                      {userRole !== 'employee' && (
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1.5">
+                            At Price
+                          </label>
+                          <input
+                            value={form.atPrice}
+                            onChange={(e) =>
+                              updateField("atPrice", e.target.value)
+                            }
+                            placeholder="At Price"
+                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm text-gray-600 mb-1.5">
                           As Of Date
@@ -1574,7 +1678,7 @@ export default function ItemPage() {
                                 updateField("processes", newProcesses);
                               }}
                               placeholder="e.g., Painting, Cutting, Assembly"
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full h-12 rows-{1} border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           </div>
 
@@ -1582,7 +1686,7 @@ export default function ItemPage() {
                             <label className="block text-sm text-gray-600 mb-1.5">
                               Description
                             </label>
-                            <input
+                            <textarea
                               value={process.description}
                               onChange={(e) => {
                                 const newProcesses = [...form.processes];
@@ -1591,7 +1695,7 @@ export default function ItemPage() {
                                 updateField("processes", newProcesses);
                               }}
                               placeholder="Brief description of this step"
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full h-12 rows-{1} border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           </div>
                         </div>
@@ -1602,8 +1706,51 @@ export default function ItemPage() {
                           </label>
                           <div className="space-y-2">
                             {(process.subSteps || []).map((subStep, subIndex) => (
-                              <div key={subStep.id} className="flex gap-2 items-start bg-gray-50 p-3 rounded border border-gray-200">
-                                <div className="flex-1 space-y-2">
+                              <div 
+                                key={subStep.id} 
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggedSubStep({ processIndex: index, subStepIndex: subIndex });
+                                  e.currentTarget.classList.add('opacity-50');
+                                }}
+                                onDragEnd={(e) => {
+                                  e.currentTarget.classList.remove('opacity-50');
+                                  setDraggedSubStep(null);
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+                                }}
+                                onDragLeave={(e) => {
+                                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                                  
+                                  if (draggedSubStep && draggedSubStep.processIndex === index) {
+                                    const newProcesses = [...form.processes];
+                                    const subSteps = [...newProcesses[index].subSteps];
+                                    const draggedItem = subSteps[draggedSubStep.subStepIndex];
+                                    
+                                    // Remove from old position
+                                    subSteps.splice(draggedSubStep.subStepIndex, 1);
+                                    // Insert at new position
+                                    subSteps.splice(subIndex, 0, draggedItem);
+                                    
+                                    newProcesses[index].subSteps = subSteps;
+                                    updateField("processes", newProcesses);
+                                  }
+                                }}
+                                className="flex gap-2 items-start bg-gray-50 p-3 rounded border border-gray-200 cursor-move transition-all">
+                                <div className="flex-shrink-0 flex items-center pt-2 text-gray-400 cursor-grab active:cursor-grabbing">
+                                  <svg width="16" height="30" viewBox="0 0 16 16" fill="currentColor">
+                                    <rect x="2" y="3" width="12" height="2" rx="1"/>
+                                    <rect x="2" y="7" width="12" height="2" rx="1"/>
+                                    <rect x="2" y="11" width="12" height="2" rx="1"/>
+                                  </svg>
+                                </div>
+                                <div className="flex-1 grid grid-cols-2 gap-3">
                                   <input
                                     value={subStep.name}
                                     onChange={(e) => {
@@ -1612,9 +1759,9 @@ export default function ItemPage() {
                                       updateField("processes", newProcesses);
                                     }}
                                     placeholder="Sub-step name (e.g., Apply primer, Mix materials)"
-                                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full border border-gray-300 rounded px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   />
-                                  <input
+                                  <textarea
                                     value={subStep.description}
                                     onChange={(e) => {
                                       const newProcesses = [...form.processes];
@@ -1622,7 +1769,7 @@ export default function ItemPage() {
                                       updateField("processes", newProcesses);
                                     }}
                                     placeholder="Details (e.g., Amount: 2L, Color: Red, Temp: 200°C)"
-                                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full h-12 resize-none border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   />
                                 </div>
                                 <button
@@ -1806,22 +1953,24 @@ export default function ItemPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-4 mb-3">
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-1.5">
-                              Cost Per Unit
-                            </label>
-                            <input
-                              value={material.costPerUnit}
-                              onChange={(e) => {
-                                const newMaterials = [...form.rawMaterials];
-                                newMaterials[index].costPerUnit = e.target.value;
-                                updateField("rawMaterials", newMaterials);
-                              }}
-                              placeholder="Cost Per Unit"
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                          </div>
+                        <div className={`grid gap-4 mb-3 ${userRole !== 'employee' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                          {userRole !== 'employee' && (
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1.5">
+                                Cost Per Unit
+                              </label>
+                              <input
+                                value={material.costPerUnit}
+                                onChange={(e) => {
+                                  const newMaterials = [...form.rawMaterials];
+                                  newMaterials[index].costPerUnit = e.target.value;
+                                  updateField("rawMaterials", newMaterials);
+                                }}
+                                placeholder="Cost Per Unit"
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                          )}
 
                           <div>
                             <label className="block text-sm text-gray-600 mb-1.5">
@@ -1905,7 +2054,7 @@ export default function ItemPage() {
                     </button>
                   </div>
                 )}
-
+                {/*inspection check*/}
                 {activeTab === "inspectionCheck" && (
                   <div>
                     <div className="mb-4">

@@ -326,7 +326,7 @@ const AccountsTeamManage = () => {
       const rawOrders = ordersRes.data || [];
       setAllOrders(rawOrders); // Keep all for stats
 
-      const accountsEmps = (employeesData || []).filter((u) => u.role === 'accounts employee');
+      const accountsEmps = (employeesData || []).filter((u) => u.role === 'employee');
       setEmployees(accountsEmps);
       setError(null);
     } catch (err) {

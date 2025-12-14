@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import { getOrderFlowStats, getOrderTree, updateOrderStatus } from '../services/api';
 import { FaChevronRight, FaChevronDown, FaBoxOpen, FaCheckCircle, FaIndustry, FaFileAlt, FaTruck, FaPlus, FaTimes, FaStickyNote, FaHistory } from 'react-icons/fa';
 import { MdVerified } from 'react-icons/md';
+import { canCreate } from '../utils/permissions';
 
 const OrderDashboard = () => {
   const navigate = useNavigate();
@@ -88,12 +89,14 @@ const OrderDashboard = () => {
         
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-slate-800">Order Management</h1>
-          <button 
-            onClick={() => navigate('/orders/new')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
-          >
-            <FaPlus /> Create New Order
-          </button>
+          {canCreate('orders') && (
+            <button 
+              onClick={() => navigate('/orders/new')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+            >
+              <FaPlus /> Create New Order
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-6 gap-4 mb-8">

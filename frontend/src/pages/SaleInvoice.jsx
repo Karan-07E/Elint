@@ -31,6 +31,17 @@ const SaleInvoice = () => {
   const [selectedParty, setSelectedParty] = useState(null);
   const [partyInput, setPartyInput] = useState('');
   
+  const getUserRole = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      return user?.role || 'user';
+    } catch {
+      return 'user';
+    }
+  };
+  
+  const userRole = getUserRole();
+  
   // Form State
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
@@ -580,10 +591,10 @@ const SaleInvoice = () => {
                   <th className="p-3 text-left w-1/4">Item</th>
                   <th className="p-3 text-left">Qty</th>
                   <th className="p-3 text-left">Unit</th>
-                  <th className="p-3 text-left">Price/Unit</th>
-                  <th className="p-3 text-left" colSpan="2">Discount</th>
+                  {userRole !== 'employee' && <th className="p-3 text-left">Price/Unit</th>}
+                  {userRole !== 'employee' && <th className="p-3 text-left" colSpan="2">Discount</th>}
                   <th className="p-3 text-left" colSpan="2">Tax</th>
-                  <th className="p-3 text-left">Amount</th>
+                  {userRole !== 'employee' && <th className="p-3 text-left">Amount</th>}
                   <th className="p-3 text-left w-10"></th>
                 </tr>
               </thead>
@@ -629,45 +640,51 @@ const SaleInvoice = () => {
                     </td>
                     
                     {/* Price/Unit */}
-                    <td className="p-3">
-                      <div className="flex flex-col">
-                        <input
-                          type="number"
-                          value={row.rate}
-                          onChange={e => handleItemRowChange(index, 'rate', e.target.value)}
-                          className="w-24 border-gray-300 rounded-md shadow-sm text-sm"
-                        />
-                        <select 
-                          value={row.rateIncludesTax}
-                          onChange={e => handleItemRowChange(index, 'rateIncludesTax', e.target.value === 'true')}
-                          className="mt-1 w-24 border-0 p-0 pl-1 text-xs"
-                        >
-                          <option value={false}>Without Tax</option>
-                          <option value={true}>With Tax</option>
-                        </select>
-                      </div>
-                    </td>
+                    {userRole !== 'employee' && (
+                      <td className="p-3">
+                        <div className="flex flex-col">
+                          <input
+                            type="number"
+                            value={row.rate}
+                            onChange={e => handleItemRowChange(index, 'rate', e.target.value)}
+                            className="w-24 border-gray-300 rounded-md shadow-sm text-sm"
+                          />
+                          <select 
+                            value={row.rateIncludesTax}
+                            onChange={e => handleItemRowChange(index, 'rateIncludesTax', e.target.value === 'true')}
+                            className="mt-1 w-24 border-0 p-0 pl-1 text-xs"
+                          >
+                            <option value={false}>Without Tax</option>
+                            <option value={true}>With Tax</option>
+                          </select>
+                        </div>
+                      </td>
+                    )}
 
                     {/* Discount */}
-                    <td className="p-3">
-                      <input
-                        type="number"
-                        value={row.discountValue}
-                        onChange={e => handleItemRowChange(index, 'discountValue', e.target.value)}
-                        className="w-16 border-gray-300 rounded-md shadow-sm text-sm"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <select
-                        value={row.discountType}
-                        onChange={e => handleItemRowChange(index, 'discountType', e.target.value)}
-                        className="w-20 border-gray-300 rounded-md shadow-sm text-sm"
-                      >
-                        <option value="percentage">%</option>
-                        <option value="flat">Amt</option>
-                      </select>
-                      <div className="text-xs text-slate-500">({row.discountAmount})</div>
-                    </td>
+                    {userRole !== 'employee' && (
+                      <>
+                        <td className="p-3">
+                          <input
+                            type="number"
+                            value={row.discountValue}
+                            onChange={e => handleItemRowChange(index, 'discountValue', e.target.value)}
+                            className="w-16 border-gray-300 rounded-md shadow-sm text-sm"
+                          />
+                        </td>
+                        <td className="p-3">
+                          <select
+                            value={row.discountType}
+                            onChange={e => handleItemRowChange(index, 'discountType', e.target.value)}
+                            className="w-20 border-gray-300 rounded-md shadow-sm text-sm"
+                          >
+                            <option value="percentage">%</option>
+                            <option value="flat">Amt</option>
+                          </select>
+                          <div className="text-xs text-slate-500">({row.discountAmount})</div>
+                        </td>
+                      </>
+                    )}
                     
                     {/* Tax */}
                     <td className="p-3">
@@ -688,9 +705,11 @@ const SaleInvoice = () => {
                     </td>
 
                     {/* Amount */}
-                    <td className="p-3 font-medium text-slate-800">
-                      {row.amount}
-                    </td>
+                    {userRole !== 'employee' && (
+                      <td className="p-3 font-medium text-slate-800">
+                        {row.amount}
+                      </td>
+                    )}
                     
                     {/* Delete Row */}
                     <td className="p-3">
@@ -772,54 +791,56 @@ const SaleInvoice = () => {
             </div>
 
             {/* Right Panel: Summary Box */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-600">Subtotal</span>
-                <span className="text-sm font-medium text-slate-800">{calculations.subtotal}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-600">Total Tax</span>
-                <span className="text-sm font-medium text-slate-800">{calculations.totalTax}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <input
-                    type="checkbox"
-                    id="roundOff"
-                    checked={roundOff}
-                    onChange={e => setRoundOff(e.target.checked)}
-                    className="mr-2 rounded text-blue-600"
-                  />
-                  <label htmlFor="roundOff" className="text-sm text-slate-600">Round Off</label>
+            {userRole !== 'employee' && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Subtotal</span>
+                  <span className="text-sm font-medium text-slate-800">{calculations.subtotal}</span>
                 </div>
-                <span className="text-sm font-medium text-slate-800">{calculations.roundOffValue}</span>
-              </div>
-              
-              <hr />
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Total Tax</span>
+                  <span className="text-sm font-medium text-slate-800">{calculations.totalTax}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <input
+                      type="checkbox"
+                      id="roundOff"
+                      checked={roundOff}
+                      onChange={e => setRoundOff(e.target.checked)}
+                      className="mr-2 rounded text-blue-600"
+                    />
+                    <label htmlFor="roundOff" className="text-sm text-slate-600">Round Off</label>
+                  </div>
+                  <span className="text-sm font-medium text-slate-800">{calculations.roundOffValue}</span>
+                </div>
+                
+                <hr />
 
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-slate-800">Total</span>
-                <span className="text-lg font-semibold text-slate-800">₹{calculations.finalTotal}</span>
-              </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold text-slate-800">Total</span>
+                  <span className="text-lg font-semibold text-slate-800">₹{calculations.finalTotal}</span>
+                </div>
 
-              <div className="flex justify-between items-center">
-                <label htmlFor="received" className="text-sm text-slate-600">Received</label>
-                <input
-                  type="number"
-                  id="received"
-                  value={calculations.finalReceived}
-                  onChange={e => setReceivedAmount(e.target.value)}
-                  disabled={saleType === 'cash'}
-                  className="w-32 border-gray-300 rounded-md shadow-sm text-sm text-right font-medium"
-                />
-              </div>
+                <div className="flex justify-between items-center">
+                  <label htmlFor="received" className="text-sm text-slate-600">Received</label>
+                  <input
+                    type="number"
+                    id="received"
+                    value={calculations.finalReceived}
+                    onChange={e => setReceivedAmount(e.target.value)}
+                    disabled={saleType === 'cash'}
+                    className="w-32 border-gray-300 rounded-md shadow-sm text-sm text-right font-medium"
+                  />
+                </div>
 
-              <div className="bg-blue-100 p-3 rounded-md flex justify-between items-center">
-                <span className="text-sm font-medium text-blue-800">Balance</span>
-                <span className="text-sm font-medium text-blue-800">₹{calculations.balance}</span>
-              </div>
+                <div className="bg-blue-100 p-3 rounded-md flex justify-between items-center">
+                  <span className="text-sm font-medium text-blue-800">Balance</span>
+                  <span className="text-sm font-medium text-blue-800">₹{calculations.balance}</span>
+                </div>
 
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
