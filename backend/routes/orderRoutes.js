@@ -157,6 +157,9 @@ router.get('/', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
 // Get assigned orders formatted for Dashboard (Employee View)
 router.get('/my-orders', authenticateToken, async (req, res) => {
   try {
+    // JWT payload has userId, not id
+    const currentUserId = req.user.userId || req.user.id;
+    
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.per_page) || 20;
     const skip = (page - 1) * limit;
@@ -197,7 +200,7 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
     // 1. Fetch matching orders
     const allMatches = await Order.find(filter)
       .populate('party', 'name')
-      .populate('items.item', 'name')
+      .populate('items.item', 'name code')
       .populate('items.assignedTo', 'name employeeId')
       .populate('assignedAccountEmployee', 'name employeeId')
       .limit(500);
@@ -214,7 +217,7 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       const userItems = o.items.filter(item => {
         if (!item.assignedTo) return false;
         const assignedToId = item.assignedTo._id ? item.assignedTo._id.toString() : item.assignedTo.toString();
-        return assignedToId === req.user.id;
+        return assignedToId === currentUserId;
       });
 
       // Calculate total for user's items only

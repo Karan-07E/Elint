@@ -207,6 +207,15 @@ const Sidebar = () => {
       permission: null
     },
 
+    // 5.5. Progress (Employee Only)
+    {
+      path: '/employee/progress',
+      icon: <LuChartPie size={20} />,
+      label: 'Progress',
+      roles: ['employee'],
+      permission: null
+    },
+
     // 6. Settings (General Access)
     { 
       path: '/settings', 

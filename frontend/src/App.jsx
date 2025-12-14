@@ -17,11 +17,13 @@ import OrderCalendar from "./pages/OrderCalendar.jsx";
 import AccountsTeamManage from "./pages/AccountsTeamManage.jsx";
 import ManageOrders from "./pages/ManageOrders.jsx";
 import AccountsReport from "./pages/AccountsReport.jsx";
-import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
+import EmployeeDashboard from "./pages/EmployeeOrders.jsx";
+import EmployeeProgress from "./pages/EmployeeProgress.jsx";
 import AccessDenied from "./pages/AccessDenied.jsx";
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isAuthChecked, setIsAuthChecked] = useState(false);
 
     // Helper function to get user role
     const getUserRole = () => {
@@ -44,6 +46,7 @@ function App() {
     useEffect(() => {
         const checkAuth = () => {
             setIsAuthenticated(!!localStorage.getItem("token"));
+            setIsAuthChecked(true);
         };
 
         // Check on initial load
@@ -60,6 +63,11 @@ function App() {
             window.removeEventListener('authChange', checkAuth);
         };
     }, []);
+
+    // Show nothing while checking authentication to prevent redirects
+    if (!isAuthChecked) {
+        return null;
+    }
 
     return (
         <Router>
@@ -264,8 +272,26 @@ function App() {
                     }
                 />
 
+                {/* Employee Progress */}
+                <Route
+                    path="/employee/progress"
+                    element={
+                        isAuthenticated && getUserRole() === 'employee'
+                            ? <EmployeeProgress />
+                            : isAuthenticated
+                                ? <AccessDenied />
+                                : <Navigate to="/login" replace />
+                    }
+                />
+
                 {/* Fallback Route */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={
+                    isAuthenticated ? (
+                        <Navigate to={getDefaultRoute()} replace />
+                    ) : (
+                        <Navigate to="/login" replace />
+                    )
+                } />
 
             </Routes>
         </Router>
