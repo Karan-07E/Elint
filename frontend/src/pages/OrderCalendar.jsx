@@ -295,6 +295,7 @@ const OrderCalendar = () => {
                             ? (order.items[0].itemName || order.items[0].name || 'Item')
                             : 'Item';
                           const isCompleted = order.status === 'Completed';
+                          const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal');
 
                           return (
                             <div
@@ -303,7 +304,7 @@ const OrderCalendar = () => {
                                 mb-0.5 px-1 py-0.5 rounded text-[10px] font-medium truncate
                                 ${isCompleted
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                  : order.priority === 'High'
+                                  : derivedPriority === 'High'
                                   ? 'bg-red-50 text-red-700 border border-red-100'
                                   : 'bg-blue-50 text-blue-700 border border-blue-100'}
                               `}
@@ -403,7 +404,7 @@ const OrderCalendar = () => {
 
                     <div className="flex justify-between items-center mt-1 text-[11px]">
                       <span className="font-medium text-slate-700">₹{(order.totalAmount || 0).toLocaleString()}</span>
-                      {order.priority === 'High' && (
+                      {(order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') && (
                         <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-semibold flex items-center gap-1">
                           <span>High Priority</span>
                         </span>

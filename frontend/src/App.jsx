@@ -4,8 +4,10 @@ import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
 import ItemPage from "./pages/item.jsx";
 import SaleInvoice from "./pages/SaleInvoice.jsx";
+import SaleReport from "./pages/SaleReport.jsx";
 import Purchase from "./pages/Purchase.jsx";
 import PurchaseBill from "./pages/PurchaseBill.jsx";
+import PurchaseReport from "./pages/PurchaseReport.jsx";
 import PartiesPage from "./pages/Parties.jsx";
 import Settings from "./pages/Settings.jsx";
 import OrderDashboard from "./pages/OrderDashboard.jsx";
@@ -240,6 +242,18 @@ function App() {
                 <Route
                     path="/orders/new"
                     element={isAuthenticated ? <CreateOrder /> : <Navigate to="/login" />}
+                />
+
+                {/* Sale Report */}
+                <Route
+                    path="/sales/report/:id"
+                    element={isAuthenticated ? <SaleReport /> : <Navigate to="/login" />}
+                />
+
+                {/* Purchase Report */}
+                <Route
+                    path="/purchases/report/:id"
+                    element={isAuthenticated ? <PurchaseReport /> : <Navigate to="/login" />}
                 />
 
                 {/* Employee Dashboard */}

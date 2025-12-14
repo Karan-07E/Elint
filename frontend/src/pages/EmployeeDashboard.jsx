@@ -172,11 +172,11 @@ const EmployeeDashboard = () => {
                                 <p className="text-slate-500 text-sm mt-1 max-w-xs">You currently have no orders assigned matching this filter. Contact your manager if this looks incorrect.</p>
                             </div>
                         ) : (
-                            orders.map((order) => (
+                            orders.map((order) => { const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal'); return (
                                 <div
                                     key={order.id}
                                     ref={el => scrollRefs.current[order.id] = el}
-                                    className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-slate-100 flex overflow-hidden border-l-[6px] ${getPriorityStripe(order.priority)}`}
+                                    className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-slate-100 flex overflow-hidden border-l-[6px] ${getPriorityStripe(derivedPriority)}`}
                                 >
                                     <div className="p-5 flex-1 flex flex-col gap-2">
                                         {/* Card Header */}
@@ -208,8 +208,8 @@ const EmployeeDashboard = () => {
 
                                         {/* Card Attributes */}
                                         <div className="mt-3 flex items-center gap-3">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide border ${getPriorityColor(order.priority).split(' ').slice(1).join(' ')} ${getPriorityColor(order.priority).split(' ')[0]}`}>
-                                                {order.priority}
+                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide border ${getPriorityColor(derivedPriority).split(' ').slice(1).join(' ')} ${getPriorityColor(derivedPriority).split(' ')[0]}`}>
+                                                {derivedPriority}
                                             </span>
                                             <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide border bg-slate-50 border-slate-200 text-slate-500">
                                                 {order.status}
@@ -232,7 +232,7 @@ const EmployeeDashboard = () => {
                                         )}
                                     </div>
                                 </div>
-                            ))
+                            ); })
                         )}
                     </div>
 
@@ -244,7 +244,7 @@ const EmployeeDashboard = () => {
                         <LuMousePointerClick /> Quick Jump
                     </h4>
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-2 flex flex-col gap-1">
-                        {orders.map(order => (
+                        {orders.map(order => { const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal'); return (
                             <button
                                 key={order.id}
                                 onClick={() => scrollToOrder(order.id)}
@@ -253,12 +253,12 @@ const EmployeeDashboard = () => {
                                 <span className={`text-xs font-medium ${order.overdue ? 'text-red-600 font-bold' : 'text-slate-600'}`}>
                                     {order.po_number}
                                 </span>
-                                <div className={`w-2 h-2 rounded-full ${order.priority === 'High' ? 'bg-orange-400' :
-                                    order.priority === 'Urgent' ? 'bg-orange-500' :
+                                <div className={`w-2 h-2 rounded-full ${derivedPriority === 'High' ? 'bg-orange-400' :
+                                    derivedPriority === 'Urgent' ? 'bg-orange-500' :
                                         'bg-slate-200'
                                     }`} />
                             </button>
-                        ))}
+                        )})}
                         {orders.length === 0 && (
                             <span className="text-xs text-slate-400 px-3 py-2 italic">List empty</span>
                         )}

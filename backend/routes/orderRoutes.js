@@ -173,7 +173,9 @@ router.get('/mine', authenticateToken, async (req, res) => {
     };
 
     if (status) filter.status = status;
-    if (priority) filter.priority = priority;
+    // Priority now applies to items. Support filtering orders that contain
+    // items with a given priority value.
+    if (priority) filter['items.priority'] = priority;
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -209,18 +211,21 @@ router.get('/mine', authenticateToken, async (req, res) => {
       const deadline = o.deadline ? new Date(o.deadline) : null;
       const isOverdue = deadline && deadline < now && o.status !== 'Completed';
 
+      // Derive order-level priority from items (High if any item is High)
+      const derivedPriority = (o.items || []).some(it => (it.priority || '').toLowerCase() === 'high') ? 'High' : (o.priority || 'Normal');
+
       return {
         id: o._id,
         po_number: o.poNumber,
         customer_name: o.party?.name || 'Unknown',
         deadline: o.deadline,
-        priority: o.priority,
+        priority: derivedPriority,
         amount: o.totalAmount,
         items: o.items,
         status: o.status,
         overdue: isOverdue,
         _rawDeadline: deadline ? deadline.getTime() : Number.MAX_SAFE_INTEGER,
-        _priorityVal: priorityWeight[o.priority] || 0
+        _priorityVal: priorityWeight[derivedPriority] || 0
       };
     });
 
@@ -291,6 +296,11 @@ router.post('/', async (req, res) => {
       }]
     };
 
+    // Ensure each item has a priority field (default to Normal) for backward compatibility
+    if (orderData.items && Array.isArray(orderData.items)) {
+      orderData.items = orderData.items.map(i => ({ ...i, priority: i.priority || 'Normal' }));
+    }
+
     const order = new Order(orderData);
     const newOrder = await order.save();
     res.status(201).json(newOrder);
@@ -340,7 +350,7 @@ router.patch('/:id/status', async (req, res) => {
   try {
     const { status, note } = req.body;
 
-    // Validate status against enum
+    // Enforce single-step transitions: only allow moving to the immediate next stage
     const validStatuses = [
       'New', 'Verified', 'Manufacturing', 'Quality_Check',
       'Documentation', 'Dispatch', 'Completed', 'Deleted'
@@ -350,27 +360,28 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(400).json({ message: 'Invalid status value' });
     }
 
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: status,
-        $push: {
-          statusHistory: {
-            status: status,
-            note: note || 'Status changed',
-            timestamp: new Date()
-          }
-        }
-      },
-      { new: true }
-    ).populate('party', 'name phone')
-      .populate('items.item', 'name');
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
+    const idx = validStatuses.indexOf(order.status);
+    const nextIdx = idx >= 0 && idx < validStatuses.length - 2 ? idx + 1 : null; // -2 to ignore Completed/Deleted as next
+    const allowedNext = nextIdx !== null ? validStatuses[nextIdx] : null;
+
+    if (!allowedNext) {
+      return res.status(400).json({ message: `Order in '${order.status}' cannot be advanced further` });
     }
 
-    res.json(order);
+    if (status !== allowedNext) {
+      return res.status(400).json({ message: `Invalid transition. Next allowed status is '${allowedNext}'` });
+    }
+
+    order.status = status;
+    order.statusHistory = order.statusHistory || [];
+    order.statusHistory.push({ status, note: note || `Moved to ${status}`, timestamp: new Date() });
+
+    await order.save();
+    const populated = await Order.findById(order._id).populate('party', 'name phone').populate('items.item', 'name');
+    res.json(populated);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

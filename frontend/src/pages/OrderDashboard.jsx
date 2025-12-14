@@ -191,23 +191,28 @@ const OrderDashboard = () => {
                               
                               {/* STATUS DROPDOWN */}
                               <div className="relative">
-                                <select
-                                  value={order.status}
-                                  onChange={(e) => handleStatusChange(order._id, e.target.value)}
-                                  className={`
-                                    text-xs font-medium px-2 py-1 rounded border cursor-pointer outline-none appearance-none pr-6
-                                    ${order.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                                      order.status === 'Verified' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 
-                                      order.status === 'Manufacturing' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                      order.status === 'Dispatch' ? 'bg-green-50 text-green-700 border-green-200' :
-                                      'bg-gray-100 text-gray-600 border-gray-200'
-                                    }
-                                  `}
-                                >
-                                  {statusOptions.map(status => (
-                                    <option key={status} value={status}>{status.replace('_', ' ')}</option>
-                                  ))}
-                                </select>
+                                {/* Show current status (disabled) and only the immediate next status as selectable */}
+                                {(() => {
+                                  const cur = order.status;
+                                  const idx = statusOptions.indexOf(cur);
+                                  const next = (idx >= 0 && idx < statusOptions.length - 2) ? statusOptions[idx + 1] : null; // don't advance past Completed
+                                  const bgClass = cur === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    cur === 'Verified' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                    cur === 'Manufacturing' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                    cur === 'Dispatch' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    'bg-gray-100 text-gray-600 border-gray-200';
+
+                                  return (
+                                    <select
+                                      value={cur}
+                                      onChange={(e) => handleStatusChange(order._id, e.target.value)}
+                                      className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer outline-none appearance-none pr-6 ${bgClass}`}
+                                    >
+                                      <option value={cur} disabled>{cur.replace('_', ' ')}</option>
+                                      {next && <option value={next}>{next.replace('_', ' ')}</option>}
+                                    </select>
+                                  );
+                                })()}
                                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none text-xs opacity-50">▼</div>
                               </div>
 
@@ -220,7 +225,8 @@ const OrderDashboard = () => {
                                 <FaStickyNote /> Notes
                               </button>
 
-                              {order.priority === 'High' && (
+                              {/* Show a high-priority badge if any item in the order is High priority */}
+                              {(order.items || []).some(it => it.priority === 'High') && (
                                 <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded flex items-center gap-1 animate-pulse">
                                   🔥 High Priority
                                 </span>

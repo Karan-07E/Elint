@@ -74,6 +74,8 @@ export const getSaleById = (id) => api.get(`/sales/${id}`);
 export const createSale = (data) => api.post('/sales', data);
 export const updateSale = (id, data) => api.put(`/sales/${id}`, data);
 export const deleteSale = (id) => api.delete(`/sales/${id}`);
+export const getNextSaleInvoice = () => api.get('/sales/next-invoice');
+export const getSaleReportPdf = (id) => api.get(`/sales/${id}/report/pdf`, { responseType: 'blob' });
 
 // --- Purchase APIs ---
 export const getAllPurchases = () => api.get('/purchases');
@@ -81,6 +83,8 @@ export const getPurchaseById = (id) => api.get(`/purchases/${id}`);
 export const createPurchase = (data) => api.post('/purchases', data);
 export const updatePurchase = (id, data) => api.put(`/purchases/${id}`, data);
 export const deletePurchase = (id) => api.delete(`/purchases/${id}`);
+export const getNextPurchaseBill = () => api.get('/purchases/next-bill');
+export const getPurchaseReportPdf = (id) => api.get(`/purchases/${id}/report/pdf`, { responseType: 'blob' });
 
 // --- Transaction APIs ---
 export const getAllTransactions = () => api.get('/transactions');

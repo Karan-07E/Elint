@@ -73,6 +73,7 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
   const { start, deadline } = computeOrderDates(order);
   const customer = order.customerName || order.party?.name || 'Customer';
   const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+  const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal');
 
   const handleAssign = () => {
     if (!assigneeId) return;
@@ -117,7 +118,7 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
             </p>
           </div>
 
-          <PriorityBadge priority={order.priority} />
+          <PriorityBadge priority={derivedPriority} />
 
           <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" viewBox="0 0 20 20" fill="currentColor">

@@ -9,7 +9,8 @@ const orderSchema = new mongoose.Schema({
   },
 
   // Order Details
-  poNumber: { type: String, required: true, trim: true },
+  // PO number is optional now
+  poNumber: { type: String, required: false, trim: true },
   poDate: { type: Date, default: Date.now },
   estimatedDeliveryDate: { type: Date },
 
@@ -43,12 +44,6 @@ const orderSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
   }],
 
-  priority: {
-    type: String,
-    enum: ['Normal', 'High'],
-    default: 'Normal'
-  },
-
   // Items in the order
   items: [{
     item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item' },
@@ -57,7 +52,9 @@ const orderSchema = new mongoose.Schema({
     unit: String,
     rate: Number,
     amount: Number,
-    deliveryDate: { type: Date }
+    deliveryDate: { type: Date },
+    // Priority moved to item-level (High applies per-item)
+    priority: { type: String, enum: ['Normal', 'High'], default: 'Normal' }
   }],
 
   totalAmount: { type: Number, default: 0 },

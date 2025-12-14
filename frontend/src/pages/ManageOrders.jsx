@@ -48,6 +48,7 @@ const getPriorityStyles = (priority) => {
 const OrderDetailPanel = ({ order, employees = [], onClose }) => {
     if (!order) return null;
 
+    const orderPriority = (order.items || []).some(it => it.priority === 'High') ? 'High' : (order.priority || 'Normal');
     const resolveEmployee = () => {
         const empVal = order.assignedAccountEmployee || order.accountsEmployee;
         if (!empVal) return null;
@@ -79,8 +80,8 @@ const OrderDetailPanel = ({ order, employees = [], onClose }) => {
                     <div className="bg-slate-50 rounded-xl p-4 space-y-3">
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-slate-600">Priority</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getPriorityStyles(order.priority)}`}>
-                                {order.priority || 'Normal'}
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getPriorityStyles(orderPriority)}`}>
+                                {orderPriority}
                             </span>
                         </div>
                         <div className="flex justify-between items-center">
@@ -196,7 +197,7 @@ const ManageOrders = () => {
     // --- Derived State ---
 
     const highPriorityOrders = useMemo(() =>
-        orders.filter(o => (o.priority || '').toLowerCase() === 'high').slice(0, 5),
+        orders.filter(o => (o.items || []).some(i => (i.priority || '').toLowerCase() === 'high')).slice(0, 5),
         [orders]);
 
     const todayTasks = useMemo(() =>
@@ -449,9 +450,14 @@ const ManageOrders = () => {
                                                     <span className="text-sm text-slate-600">{formatDate(order.estimatedDeliveryDate)}</span>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${getPriorityStyles(order.priority)}`}>
-                                                        {order.priority || 'Normal'}
-                                                    </span>
+                                                    {(() => {
+                                                        const derived = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal');
+                                                        return (
+                                                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${getPriorityStyles(derived)}`}>
+                                                                {derived}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <span className="text-sm font-mono text-slate-600">₹{(order.totalAmount || 0).toLocaleString()}</span>
