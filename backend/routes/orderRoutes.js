@@ -210,10 +210,6 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       const startDate = o.poDate ? new Date(o.poDate) : null;
       const isOverdue = deadline && deadline < now && o.status !== 'Completed';
 
-<<<<<<< HEAD
-      // Derive order-level priority from items (High if any item is High)
-      const derivedPriority = (o.items || []).some(it => (it.priority || '').toLowerCase() === 'high') ? 'High' : (o.priority || 'Normal');
-=======
       // Filter items to only show those assigned to current employee
       const userItems = o.items.filter(item => {
         if (!item.assignedTo) return false;
@@ -223,25 +219,20 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
 
       // Calculate total for user's items only
       const userTotal = userItems.reduce((sum, item) => sum + (item.amount || 0), 0);
->>>>>>> 1819e2b (orders beku testing ge)
+
+      // Derive order-level priority from items (High if any item is High)
+      const derivedPriority = (userItems || []).some(it => (it.priority || '').toLowerCase() === 'high') ? 'High' : (o.priority || 'Normal');
 
       return {
         id: o._id,
         po_number: o.poNumber,
         customer_name: o.party?.name || 'Unknown',
-<<<<<<< HEAD
-        deadline: o.deadline,
-        priority: derivedPriority,
-        amount: o.totalAmount,
-        items: o.items,
-=======
         startDate: startDate,
         deadline: deadline,
-        priority: o.priority,
+        priority: derivedPriority,
         amount: userTotal,
         totalAmount: o.totalAmount,
         items: userItems,
->>>>>>> 1819e2b (orders beku testing ge)
         status: o.status,
         overdue: isOverdue,
         assignedTo: o.assignedAccountEmployee,
