@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Sidebar from '../components/Sidebar.jsx';
 import { getAllParties, createParty, getAllItems, createOrder, searchOrders } from '../services/api';
-import { canCreate, canEdit, canDelete } from '../utils/permissions';
+import { canCreate } from '../utils/permissions';
 
 const initialPartyState = {
   name: '',
@@ -18,6 +18,10 @@ const initialPartyState = {
   additionalField2: '',
   additionalField3: '',
   additionalField4: '',
+  orderNumber: '',
+  orderQuantity: '',
+  orderRate: '',
+  orderDescription: '',
 };
 
 const PartiesPage = () => {
@@ -32,6 +36,7 @@ const PartiesPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('gst');
   const [defaultItem, setDefaultItem] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchParties();
@@ -55,18 +60,24 @@ const PartiesPage = () => {
     } else {
       setOrders([]);
     }
-  }, [selectedParty]);
+  }, [selectedParty, orderSearch]);
 
   const fetchParties = async () => {
+    setLoading(true);
     try {
       const res = await getAllParties('customer');
-      setParties(res.data || []);
-      setFilteredParties(res.data || []);
-      if (res.data && res.data.length > 0) {
-        setSelectedParty(res.data[0]);
+      const partyData = Array.isArray(res.data) ? res.data : [];
+      setParties(partyData);
+      setFilteredParties(partyData);
+      if (partyData.length > 0) {
+        setSelectedParty(partyData[0]);
       }
     } catch (error) {
       console.error('Error fetching parties:', error);
+      setParties([]);
+      setFilteredParties([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -76,6 +87,7 @@ const PartiesPage = () => {
       setOrders(res.data || []);
     } catch (error) {
       console.error('Error fetching orders for party:', error);
+      setOrders([]);
     }
   };
 
@@ -129,7 +141,6 @@ const PartiesPage = () => {
       const res = await createParty(payload);
       const createdParty = res.data;
 
-      // If order details are provided and a default item exists, create a purchase order for this party
       if (createdParty && defaultItem && newParty.orderNumber) {
         const quantity = Number(newParty.orderQuantity) || 1;
         const rate = Number(newParty.orderRate) || 0;
@@ -176,9 +187,6 @@ const PartiesPage = () => {
   const handleOrderSearchChange = (e) => {
     const value = e.target.value;
     setOrderSearch(value);
-    if (selectedParty) {
-      fetchOrdersForParty(selectedParty._id, value);
-    }
   };
 
   const renderAddPartyModal = () => {
@@ -186,8 +194,8 @@ const PartiesPage = () => {
 
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4">
-          <div className="flex items-center justify-between border-b px-6 py-4">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between border-b px-6 py-4 sticky top-0 bg-white">
             <h2 className="text-lg font-semibold">Add Party</h2>
             <button
               className="text-slate-500 hover:text-slate-700"
@@ -323,107 +331,107 @@ const PartiesPage = () => {
               )}
 
               {activeTab === 'credit' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Opening Balance</label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        name="openingBalance"
-                        value={newParty.openingBalance}
-                        onChange={handleNewPartyChange}
-                        className="w-32 border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <div className="flex items-center gap-4 text-xs">
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Opening Balance</label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          name="openingBalance"
+                          value={newParty.openingBalance}
+                          onChange={handleNewPartyChange}
+                          className="w-32 border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center gap-4 text-xs">
+                          <label className="inline-flex items-center gap-1">
+                            <input
+                              type="radio"
+                              name="balanceType"
+                              value="payable"
+                              checked={newParty.balanceType === 'payable'}
+                              onChange={handleNewPartyChange}
+                            />
+                            <span>To Pay</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1">
+                            <input
+                              type="radio"
+                              name="balanceType"
+                              value="receivable"
+                              checked={newParty.balanceType === 'receivable'}
+                              onChange={handleNewPartyChange}
+                            />
+                            <span>To Receive</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Credit Limit</label>
+                      <div className="flex items-center gap-4 text-xs mt-2">
                         <label className="inline-flex items-center gap-1">
-                          <input
-                            type="radio"
-                            name="balanceType"
-                            value="payable"
-                            checked={newParty.balanceType === 'payable'}
-                            onChange={handleNewPartyChange}
-                          />
-                          <span>To Pay</span>
+                          <input type="radio" name="creditLimitType" value="no_limit" defaultChecked />
+                          <span>No Limit</span>
                         </label>
                         <label className="inline-flex items-center gap-1">
-                          <input
-                            type="radio"
-                            name="balanceType"
-                            value="receivable"
-                            checked={newParty.balanceType === 'receivable'}
-                            onChange={handleNewPartyChange}
-                          />
-                          <span>To Receive</span>
+                          <input type="radio" name="creditLimitType" value="custom" />
+                          <span>Custom Limit</span>
                         </label>
                       </div>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Credit Limit</label>
-                    <div className="flex items-center gap-4 text-xs mt-2">
-                      <label className="inline-flex items-center gap-1">
-                        <input type="radio" name="creditLimitType" value="no_limit" defaultChecked />
-                        <span>No Limit</span>
-                      </label>
-                      <label className="inline-flex items-center gap-1">
-                        <input type="radio" name="creditLimitType" value="custom" />
-                        <span>Custom Limit</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {activeTab === 'credit' && (
-                <div className="mt-4 border-t pt-3">
-                  <p className="text-xs font-semibold text-slate-700 mb-2">Initial Purchase Order (optional)</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Order Number</label>
-                      <input
-                        type="text"
-                        name="orderNumber"
-                        value={newParty.orderNumber || ''}
-                        onChange={handleNewPartyChange}
-                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. PO-1003"
-                      />
+                  <div className="mt-4 border-t pt-3">
+                    <p className="text-xs font-semibold text-slate-700 mb-2">Initial Purchase Order (optional)</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Order Number</label>
+                        <input
+                          type="text"
+                          name="orderNumber"
+                          value={newParty.orderNumber}
+                          onChange={handleNewPartyChange}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. PO-1003"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Total Items (Qty)</label>
+                        <input
+                          type="number"
+                          name="orderQuantity"
+                          value={newParty.orderQuantity}
+                          onChange={handleNewPartyChange}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. 30"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Rate per Item</label>
+                        <input
+                          type="number"
+                          name="orderRate"
+                          value={newParty.orderRate}
+                          onChange={handleNewPartyChange}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. 100"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Total Items (Qty)</label>
-                      <input
-                        type="number"
-                        name="orderQuantity"
-                        value={newParty.orderQuantity || ''}
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">What they order (description)</label>
+                      <textarea
+                        name="orderDescription"
+                        value={newParty.orderDescription}
                         onChange={handleNewPartyChange}
+                        rows={2}
                         className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. 30"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Rate per Item</label>
-                      <input
-                        type="number"
-                        name="orderRate"
-                        value={newParty.orderRate || ''}
-                        onChange={handleNewPartyChange}
-                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. 100"
+                        placeholder="Describe the items or services ordered"
                       />
                     </div>
                   </div>
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">What they order (description)</label>
-                    <textarea
-                      name="orderDescription"
-                      value={newParty.orderDescription || ''}
-                      onChange={handleNewPartyChange}
-                      rows={2}
-                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Describe the items or services ordered"
-                    />
-                  </div>
-                </div>
+                </>
               )}
 
               {activeTab === 'additional' && (
@@ -516,7 +524,6 @@ const PartiesPage = () => {
     <div className="min-h-screen">
       <Sidebar />
       <div className="ml-64 p-5 bg-slate-100 min-h-screen">
-        {/* Top bar with search and actions */}
         <header className="bg-white rounded-lg shadow flex items-center justify-between p-4 mb-4">
           <div className="flex-1 flex items-center gap-3">
             <input
@@ -540,9 +547,7 @@ const PartiesPage = () => {
           </div>
         </header>
 
-        {/* Main content area */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Left panel: parties list */}
           <div className="bg-white rounded-lg shadow flex flex-col lg:col-span-1 min-h-[500px]">
             <div className="border-b p-4 flex items-center justify-between">
               <div>
@@ -559,48 +564,51 @@ const PartiesPage = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b text-xs text-slate-500">
-                  <tr>
-                    <th className="text-left px-4 py-2">Party</th>
-                    <th className="text-right px-4 py-2">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredParties.length === 0 && (
+              {loading ? (
+                <div className="p-4 text-center text-slate-500">Loading parties...</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b text-xs text-slate-500">
                     <tr>
-                      <td colSpan={2} className="px-4 py-8 text-center text-xs text-slate-400">
-                        No parties to show.
-                      </td>
+                      <th className="text-left px-4 py-2">Party</th>
+                      <th className="text-right px-4 py-2">Amount</th>
                     </tr>
-                  )}
-                  {filteredParties.map((party) => (
-                    <tr
-                      key={party._id}
-                      className={`cursor-pointer border-b last:border-b-0 hover:bg-slate-50 ${
-                        selectedParty && selectedParty._id === party._id ? 'bg-blue-50' : ''
-                      }`}
-                      onClick={() => handlePartyClick(party)}
-                    >
-                      <td className="px-4 py-2">
-                        <div className="flex flex-col">
-                          <span className="text-sm text-slate-800">{party.name}</span>
-                          {party.phone && (
-                            <span className="text-xs text-slate-400">{party.phone}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-right text-sm text-emerald-600">
-                        {Number(party.currentBalance || party.openingBalance || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredParties.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="px-4 py-8 text-center text-xs text-slate-400">
+                          No parties to show.
+                        </td>
+                      </tr>
+                    )}
+                    {filteredParties.map((party) => (
+                      <tr
+                        key={party._id}
+                        className={`cursor-pointer border-b last:border-b-0 hover:bg-slate-50 ${
+                          selectedParty && selectedParty._id === party._id ? 'bg-blue-50' : ''
+                        }`}
+                        onClick={() => handlePartyClick(party)}
+                      >
+                        <td className="px-4 py-2">
+                          <div className="flex flex-col">
+                            <span className="text-sm text-slate-800">{party.name}</span>
+                            {party.phone && (
+                              <span className="text-xs text-slate-400">{party.phone}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-right text-sm text-emerald-600">
+                          {Number(party.currentBalance || party.openingBalance || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
-          {/* Right panel: selected party details and transactions */}
           <div className="bg-white rounded-lg shadow lg:col-span-2 flex flex-col min-h-[500px]">
             {selectedParty ? (
               <>
@@ -665,13 +673,6 @@ const PartiesPage = () => {
                           </td>
                         </tr>
                       )}
-                      {orders.length === 0 && !(selectedParty.openingBalance || selectedParty.currentBalance) && (
-                        <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-xs text-slate-400">
-                            No transactions to show.
-                          </td>
-                        </tr>
-                      )}
                       {orders.map((order) => (
                         <tr key={order._id} className="border-b last:border-b-0 hover:bg-slate-50">
                           <td className="px-4 py-2 text-xs text-slate-600">Purchase Order</td>
@@ -685,6 +686,13 @@ const PartiesPage = () => {
                           <td className="px-4 py-2 text-right text-xs text-slate-500">-</td>
                         </tr>
                       ))}
+                      {orders.length === 0 && !(selectedParty.openingBalance || selectedParty.currentBalance) && (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-xs text-slate-400">
+                            No transactions to show.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
