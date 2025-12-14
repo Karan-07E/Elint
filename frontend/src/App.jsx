@@ -186,7 +186,7 @@ function App() {
                 <Route
                     path="/manage-teams"
                     element={
-                        isAuthenticated ? <ManageTeams /> : <Navigate to="/login" replace />
+                        <ManageTeams />
                     }
                 />
 
@@ -246,9 +246,7 @@ function App() {
                 <Route
                     path="/employee/dashboard"
                     element={
-                        isAuthenticated && getUserRole() === 'employee'
-                            ? <EmployeeDashboard />
-                            : <Navigate to="/" />
+                        <EmployeeDashboard />
                     }
                 />
 
