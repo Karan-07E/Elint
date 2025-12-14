@@ -53,13 +53,9 @@ const orderSchema = new mongoose.Schema({
     rate: Number,
     amount: Number,
     deliveryDate: { type: Date },
-<<<<<<< HEAD
-    // Priority moved to item-level (High applies per-item)
-    priority: { type: String, enum: ['Normal', 'High'], default: 'Normal' }
-=======
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    completed: { type: Boolean, default: false }
->>>>>>> 1819e2b (orders beku testing ge)
+    completed: { type: Boolean, default: false },
+    priority: { type: String, enum: ['Normal', 'High'], default: 'Normal' }
   }],
 
   totalAmount: { type: Number, default: 0 },
