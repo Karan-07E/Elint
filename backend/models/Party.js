@@ -23,6 +23,10 @@ const partySchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  additionalFields: [{
+    label: { type: String, trim: true, required: true },
+    value: { type: String, trim: true }
+  }],
   billingAddress: {
     street: String,
     city: String,

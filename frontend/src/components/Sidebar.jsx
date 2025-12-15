@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  LuLayoutDashboard, 
-  LuBox, 
-  LuLandmark, 
-  LuTrendingUp, 
-  LuShoppingCart, 
+import {
+  LuLayoutDashboard,
+  LuBox,
+  LuLandmark,
+  LuTrendingUp,
+  LuShoppingCart,
   LuChartPie,
-  LuReceipt, 
-  LuFileChartColumn, 
-  LuWarehouse, 
-  LuClipboardList, 
-  LuSettings, 
-  LuLogOut, 
+  LuReceipt,
+  LuFileChartColumn,
+  LuWarehouse,
+  LuClipboardList,
+  LuSettings,
+  LuLogOut,
   LuSearch,
   LuChevronRight,
   LuChevronDown,
@@ -25,22 +25,23 @@ import { hasPermission } from '../utils/permissions';
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   // --- Deterministic Sidebar State ---
   const [explicitAccountsOpen, setExplicitAccountsOpen] = useState(null);
   const [isPurchaseOpen, setIsPurchaseOpen] = useState(false);
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
 
   // Derived: Is the user currently inside the Accounts section?
-  const isAccountsRoute = location.pathname.startsWith('/accounts') || 
-                          location.pathname.startsWith('/parties') ||
-                          location.pathname.startsWith('/sale') ||
-                          location.pathname.startsWith('/purchase') ||
-                          location.pathname.startsWith('/expenses') ||
-                          location.pathname.startsWith('/cash-bank');
+  const isAccountsRoute = location.pathname.startsWith('/accounts') ||
+    location.pathname.startsWith('/parties') ||
+    location.pathname.startsWith('/sale') ||
+    location.pathname.startsWith('/purchase') ||
+    location.pathname.startsWith('/expenses') ||
+    location.pathname.startsWith('/cash-bank');
 
   // Final Computed State for Accounts Sidebar
-  const isAccountsOpen = explicitAccountsOpen !== null 
-    ? explicitAccountsOpen 
+  const isAccountsOpen = explicitAccountsOpen !== null
+    ? explicitAccountsOpen
     : isAccountsRoute;
 
   // Handlers
@@ -54,6 +55,7 @@ const Sidebar = () => {
 
   React.useEffect(() => {
     if (location.pathname.startsWith('/purchase')) setIsPurchaseOpen(true);
+    if (location.pathname.startsWith('/orders')) setIsOrdersOpen(true);
   }, [location.pathname]);
 
   const handleLogout = async () => {
@@ -92,21 +94,30 @@ const Sidebar = () => {
   // Define menu items with professional structure and icons
   const allMenuItems = [
     // 1. Home
-    { 
-      path: '/home', 
-      icon: <LuLayoutDashboard size={20} />, 
-      label: 'Home', 
-      roles: ['user', 'admin'], 
-      permission: null 
+    {
+      path: '/home',
+      icon: <LuLayoutDashboard size={20} />,
+      label: 'Home',
+      roles: ['user', 'admin'],
+      permission: null
     },
-    
+
+    // 2. Accounts Dashboard (New Requirement: Top Level)
+    {
+      path: '/accounts/dashboard',
+      icon: <LuLayoutDashboard size={20} />,
+      label: 'Dashboard',
+      roles: ['admin', 'accounts team'],
+      permission: null
+    },
+
     // 2. Items
-    { 
-      path: '/items', 
-      icon: <LuBox size={20} />, 
-      label: 'Items', 
-      roles: ['user', 'admin', 'accounts team', 'employee', 'product team'], 
-      permission: 'viewItems' 
+    {
+      path: '/items',
+      icon: <LuBox size={20} />,
+      label: 'Items',
+      roles: ['user', 'admin', 'accounts team', 'employee', 'product team'],
+      permission: 'viewItems'
     },
 
     // 2.5 My Orders (Employee View)
@@ -114,42 +125,42 @@ const Sidebar = () => {
       path: '/employee/dashboard',
       icon: <LuClipboardList size={20} />,
       label: 'My Orders',
-      roles: ['employee'], 
+      roles: ['employee'],
       permission: null
     },
 
     // 3. Accounts (Dropdown)
-    { 
-      path: null, 
-      icon: <LuLandmark size={20} />, 
-      label: 'Accounts', 
+    {
+      path: null,
+      icon: <LuLandmark size={20} />,
+      label: 'Accounts',
       roles: ['user', 'admin', 'accounts team'],
-      permission: null, 
+      permission: null,
       isDropdown: true,
       stateKey: 'accounts',
       subItems: [
         // Sales
-        { 
-          path: '/sale/new', 
-          icon: <LuTrendingUp size={18} />, 
-          label: 'Sales', 
-          roles: ['user', 'admin', 'accounts team'], 
-          permission: 'viewSales' 
+        {
+          path: '/sale/new',
+          icon: <LuTrendingUp size={18} />,
+          label: 'Sales',
+          roles: ['user', 'admin', 'accounts team'],
+          permission: 'viewSales'
         },
         // Parties
-        { 
-          path: '/parties', 
-          icon: <LuUsers size={18} />, 
-          label: 'Parties', 
-          roles: ['user', 'admin', 'accounts team'], 
-          permission: 'viewParties' 
+        {
+          path: '/parties',
+          icon: <LuUsers size={18} />,
+          label: 'Parties',
+          roles: ['user', 'admin', 'accounts team'],
+          permission: 'viewParties'
         },
-        
+
         // Purchases (Nested Dropdown)
-        { 
-          path: null, 
-          icon: <LuShoppingCart size={18} />, 
-          label: 'Purchases', 
+        {
+          path: null,
+          icon: <LuShoppingCart size={18} />,
+          label: 'Purchases',
           roles: ['user', 'admin', 'accounts team'],
           permission: 'viewPurchases',
           isNestedDropdown: true,
@@ -161,41 +172,52 @@ const Sidebar = () => {
         },
 
         // Accounts Report
-        { 
-          path: '/reports', 
-          icon: <LuFileChartColumn size={18} />, 
-          label: 'Reports', 
-          roles: ['user', 'admin', 'accounts team'], 
-          permission: 'viewReports' 
+        {
+          path: '/accounts/report',
+          icon: <LuFileChartColumn size={18} />,
+          label: 'Reports',
+          roles: ['user', 'admin', 'accounts team'],
+          permission: 'viewReports'
         },
 
-        // Manage Orders (For Accounts)
+
+
+        // Inventory
         {
-          path: '/accounts/manage-orders',
+          path: '/accounts/inventory',
+          icon: <LuWarehouse size={18} />,
+          label: 'Inventory',
+          roles: ['user', 'admin', 'accounts team'],
+          permission: 'viewItems'
+        },
+      ]
+    },
+
+    // 4. Orders
+    {
+      path: '/orders',
+      icon: <LuClipboardList size={20} />,
+      label: 'Orders',
+      roles: ['user', 'admin', 'product team', 'accounts team'],
+      permission: 'viewOrders',
+      isDropdown: true,
+      stateKey: 'orders',
+      subItems: [
+        {
+          path: '/orders/manage',
           icon: <LuClipboardList size={18} />,
           label: 'Manage Orders',
           roles: ['accounts team'],
           permission: null
         },
-
-        // Inventory
-        { 
-          path: '/items', // Reusing items path
-          icon: <LuWarehouse size={18} />, 
-          label: 'Inventory', 
-          roles: ['user', 'admin', 'accounts team'], 
-          permission: 'viewItems' 
-        },
+        {
+          path: '/orders/teams',
+          icon: <LuUsers size={18} />,
+          label: 'Manage Teams',
+          roles: ['accounts team'],
+          permission: null
+        }
       ]
-    },
-    
-    // 4. Orders
-    { 
-      path: '/orders', 
-      icon: <LuClipboardList size={20} />, 
-      label: 'Orders', 
-      roles: ['user', 'admin', 'product team', 'accounts team'], 
-      permission: 'viewOrders' 
     },
 
     // 5. Order Calendar
@@ -208,21 +230,21 @@ const Sidebar = () => {
     },
 
     // 6. Settings (General Access)
-    { 
-      path: '/settings', 
+    {
+      path: '/settings',
       icon: <LuSettings size={20} />,
-      label: 'Settings', 
-      roles: ['user', 'admin', 'accounts team', 'product team'], 
-      permission: 'viewSettings' 
+      label: 'Settings',
+      roles: ['user', 'admin', 'accounts team', 'product team'],
+      permission: 'viewSettings'
     },
 
     // 7. Manage Teams (Admin Only)
-    { 
-      path: '/manage-teams', 
-      icon: <LuUsers size={20} />, 
-      label: 'Manage Teams', 
-      roles: ['admin'], 
-      permission: 'manageUsers' 
+    {
+      path: '/manage-teams',
+      icon: <LuUsers size={20} />,
+      label: 'Manage Teams',
+      roles: ['admin'],
+      permission: 'manageUsers'
     },
   ];
 
@@ -248,8 +270,14 @@ const Sidebar = () => {
         }
         return subItem;
       });
-      
-      if (filteredSubItems.length === 0) return null;
+
+      if (filteredSubItems.length === 0) {
+        // If it has a path, convert to regular item instead of hiding
+        if (item.path) {
+          return { ...item, isDropdown: false, subItems: [] };
+        }
+        return null;
+      }
       return { ...item, subItems: filteredSubItems };
     }
     return item;
@@ -257,7 +285,7 @@ const Sidebar = () => {
 
   return (
     <div className="w-64 bg-slate-900 text-slate-300 h-screen flex flex-col fixed left-0 top-0 border-r border-slate-800 z-50 font-sans shadow-xl">
-      
+
       {/* Header */}
       <div className="p-5 border-b border-slate-800 bg-slate-900">
         <div className="flex items-center gap-3 mb-5 px-1">
@@ -268,12 +296,12 @@ const Sidebar = () => {
           </div>
           <span className="text-lg font-bold text-white tracking-tight">Elints ERP</span>
         </div>
-        
+
         <div className="relative group">
           <LuSearch className="absolute left-3 top-2.5 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={14} />
-          <input 
-            type="text" 
-            placeholder="Search..." 
+          <input
+            type="text"
+            placeholder="Search..."
             className="w-full bg-slate-800 text-slate-200 text-xs rounded-lg px-3 pl-9 py-2.5 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all placeholder:text-slate-500"
           />
         </div>
@@ -293,31 +321,60 @@ const Sidebar = () => {
                   return false;
                 });
               };
-              
+
+              const isOpen = item.stateKey === 'orders' ? isOrdersOpen : isAccountsOpen;
+              // Check if parent itself matches current path
+              const isParentActive = item.path === location.pathname;
               const isAnySubItemActive = checkActive(item.subItems);
-              const isOpen = isAccountsOpen; 
-              
+
+              const toggle = (e) => {
+                if (e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+                item.stateKey === 'orders' ? setIsOrdersOpen(!isOrdersOpen) : handleAccountsHeaderClick();
+              };
+
               return (
                 <li key={`dropdown-${index}`}>
                   <div
-                    onClick={handleAccountsHeaderClick}
                     className={`
                       flex items-center justify-between relative py-3 px-3 rounded-lg cursor-pointer transition-all duration-200 group
-                      ${isAnySubItemActive || isOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}
+                      ${isAnySubItemActive || isOpen || isParentActive ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}
                     `}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className={`${isAnySubItemActive || isOpen ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>
-                        {item.icon}
-                      </span>
-                      <span className="text-sm font-medium">{item.label}</span>
+                    {/* Create Split Interaction: Left side Link (if path exists), Right side Toggle */}
+                    {item.path ? (
+                      <Link
+                        to={item.path}
+                        className="flex-1 flex items-center gap-3"
+                      >
+                        <span className={`${isAnySubItemActive || isOpen || isParentActive ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>
+                          {item.icon}
+                        </span>
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </Link>
+                    ) : (
+                      <div
+                        className="flex-1 flex items-center gap-3"
+                        onClick={toggle}
+                      >
+                        <span className={`${isAnySubItemActive || isOpen || isParentActive ? 'text-blue-500' : 'text-slate-500 group-hover:text-blue-400'}`}>
+                          {item.icon}
+                        </span>
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </div>
+                    )}
+
+                    {/* Chevron is always a toggle */}
+                    <div onClick={toggle} className="p-1 hover:bg-white/10 rounded">
+                      <LuChevronRight
+                        size={14}
+                        className={`transition-transform duration-200 ${isOpen ? 'rotate-90 text-blue-500' : 'text-slate-600'}`}
+                      />
                     </div>
-                    <LuChevronRight 
-                      size={14} 
-                      className={`transition-transform duration-200 ${isOpen ? 'rotate-90 text-blue-500' : 'text-slate-600'}`} 
-                    />
                   </div>
-                  
+
                   {/* Dropdown Content */}
                   <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
                     <ul className="space-y-1 pl-3 border-l-2 border-slate-800 ml-5">
@@ -326,7 +383,7 @@ const Sidebar = () => {
                           // Nested Dropdown (Purchases)
                           const isNestedOpen = isPurchaseOpen;
                           const isAnyNestedActive = subItem.subItems.some(nested => location.pathname === nested.path);
-                          
+
                           return (
                             <li key={`nested-${subIndex}`}>
                               <div
@@ -347,7 +404,7 @@ const Sidebar = () => {
                                 </div>
                                 <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
                               </div>
-                              
+
                               {/* Nested Content */}
                               {isNestedOpen && (
                                 <ul className="mt-1 space-y-1 pl-3 border-l border-slate-800 ml-4 bg-slate-900/50 py-1 rounded-r-lg">
@@ -359,8 +416,8 @@ const Sidebar = () => {
                                           to={nestedItem.path}
                                           className={`
                                             flex items-center gap-3 py-2 px-3 rounded-md text-xs transition-all
-                                            ${isNestedActive 
-                                              ? 'bg-blue-600/10 text-blue-400 font-medium' 
+                                            ${isNestedActive
+                                              ? 'bg-blue-600/10 text-blue-400 font-medium'
                                               : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}
                                           `}
                                         >
@@ -377,7 +434,7 @@ const Sidebar = () => {
                             </li>
                           );
                         }
-                        
+
                         // Regular Sub Item
                         const isSubActive = location.pathname === subItem.path;
                         return (
@@ -386,8 +443,8 @@ const Sidebar = () => {
                               to={subItem.path}
                               className={`
                                 flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-all
-                                ${isSubActive 
-                                  ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20' 
+                                ${isSubActive
+                                  ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-900/20'
                                   : 'text-slate-400 hover:text-white hover:bg-slate-800'}
                               `}
                             >
@@ -404,10 +461,10 @@ const Sidebar = () => {
                 </li>
               );
             }
-            
+
             // Regular Top Level Menu Item
             const isActive = location.pathname === item.path;
-            
+
             return (
               <li key={item.path}>
                 <Link
@@ -415,8 +472,8 @@ const Sidebar = () => {
                   onClick={handleTopLevelClick}
                   className={`
                     flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-all duration-200 group
-                    ${isActive 
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 font-medium' 
+                    ${isActive
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 font-medium'
                       : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
                   `}
                 >
@@ -446,8 +503,8 @@ const Sidebar = () => {
             <p className="text-xs text-slate-500 capitalize truncate">{userRole}</p>
           </div>
         </div>
-        
-        <button 
+
+        <button
           onClick={handleLogout}
           className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-red-400 py-2.5 hover:bg-red-500/10 rounded-lg transition-all duration-200"
         >

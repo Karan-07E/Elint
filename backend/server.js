@@ -112,6 +112,7 @@ app.use('/api/purchases', purchaseRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/accounts', require('./routes/accountsRoutes'));
 app.use('/api/users', userRoutes);
 app.use('/api/export', exportRoutes);
 

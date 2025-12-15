@@ -1,25 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from 'recharts';
-import { getDashboardSummary, getOrderChartData, getRecentTransactions } from '../services/api';
 import Sidebar from '../components/Sidebar.jsx';
+import { getAllOrders } from '../services/api';
 import { FaSpinner } from 'react-icons/fa';
+import { LuSearch, LuFilter, LuCalendar, LuDownload, LuFileText, LuX, LuChevronDown, LuChevronUp } from 'react-icons/lu';
 
 const AccountsReport = () => {
     const navigate = useNavigate();
 
     // State
-    const [summary, setSummary] = useState({
-        counts: { inQueue: 0, inProgress: 0, completed: 0 },
-        queueList: [],
-        progressList: []
-    });
-    const [chartData, setChartData] = useState([]);
-    const [transactions, setTransactions] = useState([]);
-    const [period, setPeriod] = useState('month');
+    const [orders, setOrders] = useState([]);
+    const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [expandedOrderId, setExpandedOrderId] = useState(null);
+
+    // Filter States
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [employeeFilter, setEmployeeFilter] = useState('All');
+    const [dateRange, setDateRange] = useState('7days'); // 7days, 30days, all
 
     // Logout Logic
     const handleLogout = async () => {
@@ -48,231 +47,383 @@ const AccountsReport = () => {
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [summaryRes, chartRes, txnRes] = await Promise.all([
-                    getDashboardSummary(),
-                    getOrderChartData(period),
-                    getRecentTransactions()
-                ]);
+                const token = localStorage.getItem('token');
 
-                setSummary(summaryRes.data);
-                setChartData(chartRes.data);
-                setTransactions(txnRes.data);
+                // Fetch Orders
+                const ordersRes = await getAllOrders();
+
+                // Fetch Employees
+                let employeesData = [];
+                if (token) {
+                    try {
+                        const usersRes = await fetch('/api/users/team/employees', {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (usersRes.ok) employeesData = await usersRes.json();
+                    } catch (e) { console.error('Error fetching employees:', e); }
+                }
+
+                setOrders(ordersRes.data || []);
+                // Filter only 'employee' role as per AccountsTeamManage pattern
+                setEmployees((employeesData || []).filter(u => u.role === 'employee'));
                 setLoading(false);
             } catch (error) {
-                console.error('Error fetching dashboard data:', error);
+                console.error('Error fetching data:', error);
                 setLoading(false);
             }
         };
         loadData();
-    }, [period]);
+    }, []);
 
-    const reports = [
-        { name: 'Sale Report', icon: '📝', path: '/reports/sales' },
-        { name: 'All Transactions', icon: '💳', path: '/reports/transactions' },
-        { name: 'Daybook Report', icon: '📅', path: '/reports/daybook' },
-        { name: 'Party Statement', icon: '👤', path: '/parties' }
-    ];
+    // Filter Logic
+    const filteredOrders = useMemo(() => {
+        let result = [...orders];
+
+        // 1. Date Filter
+        const now = new Date();
+        if (dateRange !== 'all') {
+            const days = dateRange === '7days' ? 7 : 30;
+            const pastDate = new Date(now.setDate(now.getDate() - days));
+            result = result.filter(o => new Date(o.createdAt || o.updatedAt) >= pastDate);
+        }
+
+        // 2. Status Filter (Assigned/Unassigned)
+        if (statusFilter === 'Assigned') {
+            result = result.filter(o => o.assignedAccountEmployee);
+        } else if (statusFilter === 'Unassigned') {
+            result = result.filter(o => !o.assignedAccountEmployee);
+        }
+
+        // 3. Employee Filter
+        if (employeeFilter !== 'All') {
+            result = result.filter(o => {
+                const empId = o.assignedAccountEmployee?._id || o.assignedAccountEmployee;
+                return empId === employeeFilter;
+            });
+        }
+
+        // 4. Search Query (Job #, PO #, Employee Name)
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter(o => {
+                const jobNo = (o.poNumber || '').toLowerCase();
+                const poNo = (o.orderNumber || '').toLowerCase(); // Fallback if orderNumber exists
+                const empId = o.assignedAccountEmployee?._id || o.assignedAccountEmployee;
+                const emp = employees.find(e => e._id === empId);
+                const empName = (emp?.name || '').toLowerCase();
+
+                return jobNo.includes(q) || poNo.includes(q) || empName.includes(q);
+            });
+        }
+
+        return result;
+    }, [orders, employees, searchQuery, statusFilter, employeeFilter, dateRange]);
+
+    // Summary Metrics Calculation
+    const metrics = useMemo(() => {
+        const total = filteredOrders.length;
+        const assigned = filteredOrders.filter(o => o.assignedAccountEmployee).length;
+        const unassigned = total - assigned;
+        // Active employees in ONLY the filtered set
+        const activeEmpIds = new Set(filteredOrders.map(o => o.assignedAccountEmployee?._id || o.assignedAccountEmployee).filter(Boolean));
+
+        return { total, assigned, unassigned, activeEmployees: activeEmpIds.size };
+    }, [filteredOrders]);
+
+    // Helper to get employee name
+    const getEmployeeName = (empId) => {
+        const id = empId?._id || empId;
+        if (!id) return null;
+        const emp = employees.find(e => e._id === id);
+        return emp ? emp.name : 'Unknown';
+    };
+
+    // CSV Export Handler
+    const handleExportCSV = () => {
+        if (!filteredOrders.length) {
+            alert("No report data available to export.");
+            return;
+        }
+
+        const headers = ["Job Number", "PO Number", "Item Names", "Assigned Employee Name", "Employee ID", "Order Status", "Assignment Date"];
+
+        const rows = filteredOrders.map(order => {
+            const itemNames = (order.items || []).map(i => i.itemName || i.name || "Unknown").join("; ");
+            const empName = getEmployeeName(order.assignedAccountEmployee) || "Not Assigned";
+            const empObj = employees.find(e => e._id === (order.assignedAccountEmployee?._id || order.assignedAccountEmployee));
+            const empId = empObj ? empObj.employeeId : (order.assignedAccountEmployee ? "Unknown ID" : "-");
+            const date = new Date(order.updatedAt).toLocaleDateString();
+
+            // STRICT MAPPING RULES FIXED:
+            // 1. Job Number: UI uses order.poNumber, so CSV must match it.
+            // 2. PO Number: Instruction says separate mapping to order.poNumber.
+            // Result: Both columns use order.poNumber because it's the only valid business ID in DB.
+
+            const jobVal = order.poNumber || 'NA';
+            const poVal = order.poNumber || 'NA';
+
+            return [
+                `"${jobVal}"`,
+                `"${poVal}"`,
+                `"${itemNames}"`,
+                `"${empName}"`,
+                `"${empId}"`,
+                `"${order.status}"`,
+                `"${date}"`
+            ].join(",");
+        });
+
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `reports_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
-        <div className="min-h-screen bg-slate-100">
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex">
             <Sidebar />
-            <div className="ml-64 p-6">
 
-                {/* Top Header */}
-                <header className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-6 flex justify-between items-center">
+            <main className="flex-1 ml-64 p-8">
+                {/* 1. Header (Distinct from Dashboard) */}
+                <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6">
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-800">
-                            Welcome to <span className="text-orange-500">Elints</span>
+                        <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+                            <LuFileText className="text-slate-400" />
+                            Reports
                         </h1>
-                        <p className="text-sm text-slate-500">Here's what's happening with your business today.</p>
+                        <p className="text-slate-500 mt-1 text-sm font-medium">
+                            Operational review: Orders, assignments, and personnel tracking.
+                        </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => navigate('/orders/new')}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                    <div className="flex gap-3">
+                        <select
+                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-slate-500 focus:border-slate-500 block px-3 py-2 cursor-pointer"
+                            value={dateRange}
+                            onChange={(e) => setDateRange(e.target.value)}
                         >
-                            + Create Order
-                        </button>
+                            <option value="7days">Last 7 Days</option>
+                            <option value="30days">Last 30 Days</option>
+                            <option value="all">All Time</option>
+                        </select>
                         <button
-                            onClick={handleLogout}
-                            className="bg-white border border-red-200 text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                            onClick={handleExportCSV}
+                            className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
                         >
-                            Logout
+                            <LuDownload size={16} /> Export CSV
                         </button>
                     </div>
                 </header>
 
-                {loading ? (
-                    <div className="flex justify-center items-center h-64">
-                        <FaSpinner className="animate-spin text-4xl text-blue-500" />
+                {/* 2. Summary Strip (Horizontal Bar) */}
+                <div className="grid grid-cols-4 gap-4 mb-8">
+                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Orders</span>
+                        <span className="text-2xl font-bold text-slate-800">{metrics.total}</span>
                     </div>
-                ) : (
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Assigned</span>
+                        <span className="text-2xl font-bold text-emerald-600">{metrics.assigned}</span>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Unassigned</span>
+                        <span className="text-2xl font-bold text-amber-500">{metrics.unassigned}</span>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Active Staff</span>
+                        <span className="text-2xl font-bold text-blue-600">{metrics.activeEmployees}</span>
+                    </div>
+                </div>
 
-                        {/* Main Content Area */}
-                        <div className="flex flex-col gap-6 xl:col-span-2">
-
-                            {/* 1. Status Cards with Dropdowns */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                                {/* Orders In Queue (New) */}
-                                <div className="bg-white rounded-lg shadow-sm p-5 border border-slate-200 relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                                        <span className="text-6xl">⏳</span>
-                                    </div>
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="text-slate-500 text-sm font-medium uppercase tracking-wider">In Queue (New)</h3>
-                                            <div className="text-3xl font-bold text-slate-800 mt-1">{summary.counts.inQueue}</div>
-                                        </div>
-                                        <span className="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full font-medium">Pending</span>
-                                    </div>
-
-                                    {/* Dropdown List */}
-                                    <div className="mt-2">
-                                        <label className="text-xs text-slate-400 font-medium mb-1 block">Recent New Orders</label>
-                                        <select className="w-full text-sm border-slate-200 rounded-md focus:ring-orange-500 focus:border-orange-500 bg-slate-50">
-                                            <option disabled defaultValue>View Orders ({summary.queueList.length})</option>
-                                            {summary.queueList.map(order => (
-                                                <option key={order.id}>
-                                                    {order.poNumber} - {order.customerName}
-                                                </option>
-                                            ))}
-                                            {summary.queueList.length === 0 && <option disabled>No new orders</option>}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Orders In Progress */}
-                                <div className="bg-white rounded-lg shadow-sm p-5 border border-slate-200 relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                                        <span className="text-6xl">⚙️</span>
-                                    </div>
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="text-slate-500 text-sm font-medium uppercase tracking-wider">In Progress</h3>
-                                            <div className="text-3xl font-bold text-slate-800 mt-1">{summary.counts.inProgress}</div>
-                                        </div>
-                                        <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full font-medium">Active</span>
-                                    </div>
-
-                                    {/* Dropdown List */}
-                                    <div className="mt-2">
-                                        <label className="text-xs text-slate-400 font-medium mb-1 block">Active Orders</label>
-                                        <select className="w-full text-sm border-slate-200 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-slate-50">
-                                            <option disabled defaultValue>View Orders ({summary.progressList.length})</option>
-                                            {summary.progressList.map(order => (
-                                                <option key={order.id}>
-                                                    {order.poNumber} - {order.status}
-                                                </option>
-                                            ))}
-                                            {summary.progressList.length === 0 && <option disabled>No active orders</option>}
-                                        </select>
-                                    </div>
-                                </div>
+                {/* 3. Filters Toolbar */}
+                <div className="bg-white p-4 rounded-t-lg border border-slate-200 border-b-0 flex flex-wrap gap-4 items-center justify-between">
+                    <div className="flex gap-3 flex-1 min-w-[300px]">
+                        <div className="relative flex-1">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <LuSearch className="w-4 h-4 text-slate-400" />
                             </div>
-
-                            {/* 2. Graph Section */}
-                            <div className="bg-white rounded-lg shadow-sm p-5 border border-slate-200">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-slate-700 font-bold">Order Trends</h3>
-                                    <select
-                                        className="border border-slate-200 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        value={period}
-                                        onChange={(e) => setPeriod(e.target.value)}
-                                    >
-                                        <option value="week">This Week</option>
-                                        <option value="month">This Month</option>
-                                        <option value="year">This Year</option>
-                                    </select>
-                                </div>
-
-                                <div className="h-[300px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                            <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                                            <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                                            <Tooltip
-                                                contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                itemStyle={{ fontSize: '12px', fontWeight: 500 }}
-                                            />
-                                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                                            <Line
-                                                type="monotone"
-                                                dataKey="inQueue"
-                                                name="New / In Queue"
-                                                stroke="#f97316"
-                                                strokeWidth={3}
-                                                dot={{ r: 4, fill: '#f97316', strokeWidth: 2, stroke: '#fff' }}
-                                                activeDot={{ r: 6 }}
-                                            />
-                                            <Line
-                                                type="monotone"
-                                                dataKey="inProgress"
-                                                name="In Progress"
-                                                stroke="#3b82f6"
-                                                strokeWidth={3}
-                                                dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
-                                                activeDot={{ r: 6 }}
-                                            />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right Side Panel */}
-                        <div className="flex flex-col gap-6">
-
-                            {/* Quick Actions / Empty State */}
-                            <div className="bg-white rounded-lg shadow-sm p-6 border border-slate-200 flex flex-col items-center justify-center text-center">
-                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 text-3xl">
-                                    🚀
-                                </div>
-                                <h3 className="text-lg font-semibold text-slate-800 mb-2">Quick Actions</h3>
-                                <p className="text-slate-500 text-sm mb-4">Manage your business efficiently.</p>
-                                <div className="w-full space-y-2">
-                                    <button onClick={() => navigate('/sale/new')} className="w-full py-2 border border-slate-200 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Create Invoice</button>
-                                    <button onClick={() => navigate('/purchase/new')} className="w-full py-2 border border-slate-200 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Add Purchase</button>
-                                    <button onClick={() => navigate('/parties')} className="w-full py-2 border border-slate-200 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Add Party</button>
-                                </div>
-                            </div>
-
-                            {/* Recent Transactions List */}
-                            <div className="bg-white rounded-lg shadow-sm p-5 border border-slate-200 flex-1">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold text-slate-800">Recent Activity</h3>
-                                    <span className="text-xs text-blue-600 cursor-pointer hover:underline" onClick={() => navigate('/reports')}>View All</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {transactions.length === 0 ? (
-                                        <p className="text-sm text-slate-400 text-center py-4">No recent transactions</p>
-                                    ) : (
-                                        transactions.map((txn, i) => (
-                                            <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-md transition-colors border border-transparent hover:border-slate-100">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs ${txn.type === 'sale' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                                        {txn.type === 'sale' ? '↓' : '↑'}
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-slate-800">{txn.party?.name || 'Unknown'}</p>
-                                                        <p className="text-xs text-slate-500">{new Date(txn.transactionDate).toLocaleDateString()}</p>
-                                                    </div>
-                                                </div>
-                                                <div className={`text-sm font-bold ${txn.type === 'sale' ? 'text-green-600' : 'text-slate-700'}`}>
-                                                    {txn.type === 'sale' ? '+' : '-'}₹{txn.amount}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-
+                            <input
+                                type="text"
+                                className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5"
+                                placeholder="Search Job #, PO, or Employee..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
                         </div>
                     </div>
-                )}
-            </div>
+                    <div className="flex gap-3">
+                        <div className="flex items-center gap-2">
+                            <LuFilter className="text-slate-400 w-4 h-4" />
+                            <span className="text-sm text-slate-600 font-medium">Filters:</span>
+                        </div>
+                        <select
+                            className="bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block px-3 py-2 cursor-pointer min-w-[140px]"
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="All">All Status</option>
+                            <option value="Assigned">Assigned</option>
+                            <option value="Unassigned">Unassigned</option>
+                        </select>
+                        <select
+                            className="bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block px-3 py-2 cursor-pointer min-w-[160px]"
+                            value={employeeFilter}
+                            onChange={(e) => setEmployeeFilter(e.target.value)}
+                        >
+                            <option value="All">All Employees</option>
+                            {employees.map(emp => (
+                                <option key={emp._id} value={emp._id}>{emp.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                {/* 4. Data Table */}
+                <div className="relative overflow-x-auto border border-slate-200 rounded-b-lg shadow-sm bg-white">
+                    <table className="w-full text-sm text-left text-slate-600">
+                        <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th scope="col" className="px-6 py-3 font-semibold">Job Number</th>
+                                <th scope="col" className="px-6 py-3 font-semibold">PO / Order ID</th>
+                                <th scope="col" className="px-6 py-3 font-semibold">Item Name</th>
+                                <th scope="col" className="px-6 py-3 font-semibold">Assigned To</th>
+                                <th scope="col" className="px-6 py-3 font-semibold">Emp ID</th>
+                                <th scope="col" className="px-6 py-3 font-semibold">Status</th>
+                                <th scope="col" className="px-6 py-3 font-semibold">Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="7" className="px-6 py-12 text-center">
+                                        <div className="flex justify-center items-center gap-2 text-slate-400">
+                                            <FaSpinner className="animate-spin" /> Loading report data...
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredOrders.length === 0 ? (
+                                <tr>
+                                    <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
+                                        No matching records found for the selected criteria.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredOrders.map((order) => {
+                                    const empName = getEmployeeName(order.assignedAccountEmployee);
+                                    // Robust access to emp id for display
+                                    const empObj = employees.find(e => e._id === (order.assignedAccountEmployee?._id || order.assignedAccountEmployee));
+                                    const empDisplayId = empObj ? (empObj.employeeId || 'N/A') : '-';
+                                    const isExpanded = expandedOrderId === order._id;
+
+                                    return (
+                                        <React.Fragment key={order._id}>
+                                            <tr className={`bg-white hover:bg-slate-50 transition-colors ${isExpanded ? 'bg-blue-50/30' : ''}`}>
+                                                <td className="px-6 py-4 font-medium text-slate-900 border-l-4 border-transparent hover:border-blue-500 transition-all">
+                                                    {order.poNumber || <span className="text-slate-300 italic">No Job #</span>}
+                                                </td>
+                                                <td className="px-6 py-4 font-mono text-xs text-slate-500">
+                                                    {order._id.substring(order._id.length - 8).toUpperCase()}
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700 relative">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{order.items?.[0]?.itemName || 'Unknown Item'}</span>
+                                                        {order.items?.length > 1 && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setExpandedOrderId(isExpanded ? null : order._id);
+                                                                }}
+                                                                className={`
+                                                                    ml-1 text-xs px-2 py-0.5 rounded-full font-medium transition-all flex items-center gap-1
+                                                                    ${isExpanded
+                                                                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                                                                        : 'bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600'}
+                                                                `}
+                                                            >
+                                                                +{order.items.length - 1} more
+                                                                {isExpanded ? <LuChevronUp size={10} /> : <LuChevronDown size={10} />}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {empName ? (
+                                                        <span className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                                            {empName}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic text-xs">Not Assigned</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 text-xs font-mono text-slate-400">
+                                                    {empDisplayId}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded text-xs font-semibold
+                                                        ${order.status === 'Completed' ? 'bg-green-50 text-green-700' :
+                                                            order.status === 'New' ? 'bg-orange-50 text-orange-700' :
+                                                                'bg-slate-100 text-slate-600'}`}>
+                                                        {order.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs text-slate-500">
+                                                    {new Date(order.updatedAt).toLocaleDateString()}
+                                                </td>
+                                            </tr>
+                                            {/* Expandable Row for Items Drilldown */}
+                                            {isExpanded && (
+                                                <tr className="bg-slate-50/50 shadow-inner">
+                                                    <td colSpan="7" className="px-6 py-4 pl-12">
+                                                        <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm max-w-2xl">
+                                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex justify-between items-center">
+                                                                <span>All Items in Job {order.poNumber}</span>
+                                                                <button onClick={() => setExpandedOrderId(null)} className="text-slate-400 hover:text-slate-600">
+                                                                    <LuX size={14} />
+                                                                </button>
+                                                            </h4>
+                                                            <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                                                                {order.items.map((item, idx) => (
+                                                                    <div key={idx} className="flex justify-between items-center text-sm p-2 rounded hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-colors">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <span className="w-5 h-5 flex items-center justify-center bg-slate-100 text-slate-500 text-xs rounded-full font-medium">
+                                                                                {idx + 1}
+                                                                            </span>
+                                                                            <span className="text-slate-700 font-medium">{item.itemName || item.name || 'Unknown Item'}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-4">
+                                                                            {item.unit && <span className="text-xs text-slate-400 bg-slate-100 px-1.5 rounded">{item.unit}</span>}
+                                                                            <span className="font-mono text-slate-600 font-medium">
+                                                                                Qty: {item.quantity || 0}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+
+                    {/* Footer / Pagination Placeholder */}
+                    <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-between items-center">
+                        <span className="text-xs text-slate-500">
+                            Showing <span className="font-medium text-slate-900">{filteredOrders.length}</span> records
+                        </span>
+                        {/* Pagination controls could be added here if backend supported pagination parameters or client-side slice */}
+                    </div>
+                </div>
+
+            </main>
         </div>
     );
 };
