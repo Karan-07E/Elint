@@ -634,7 +634,15 @@ export default function ManageTeams() {
                 <div>
                   <h4 className="text-sm font-semibold text-slate-800 mb-4">Permissions</h4>
                   
-                  {permissionCategories.map((category, catIndex) => (
+                  {permissionCategories
+                    .filter(category => {
+                      // For employees, exclude Purchase, Sales, and Parties management
+                      if (selectedUser.role === 'employee') {
+                        return !['Purchase Management', 'Sales Management', 'Parties Management'].includes(category.name);
+                      }
+                      return true;
+                    })
+                    .map((category, catIndex) => (
                     <div key={catIndex} className="mb-6">
                       <h5 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">
                         {category.name}
