@@ -114,6 +114,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/accounts', require('./routes/accountsRoutes'));
 app.use('/api/users', userRoutes);
+app.use('/api/mappings', require('./routes/mappingRoutes'));
 app.use('/api/export', exportRoutes);
 
 // Kick off connection + server start
