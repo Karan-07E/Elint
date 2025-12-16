@@ -14,10 +14,7 @@ const initialPartyState = {
   pincode: '',
   openingBalance: 0,
   balanceType: 'receivable',
-  additionalField1: '',
-  additionalField2: '',
-  additionalField3: '',
-  additionalField4: '',
+  additionalFields: [],
   orderNumber: '',
   orderQuantity: '',
   orderRate: '',
@@ -111,6 +108,28 @@ const PartiesPage = () => {
     setNewParty((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleAddField = () => {
+    setNewParty((prev) => ({
+      ...prev,
+      additionalFields: [...prev.additionalFields, { label: '', value: '' }]
+    }));
+  };
+
+  const handleRemoveField = (index) => {
+    setNewParty((prev) => ({
+      ...prev,
+      additionalFields: prev.additionalFields.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleFieldChange = (index, field, value) => {
+    setNewParty((prev) => {
+      const updated = [...prev.additionalFields];
+      updated[index][field] = value;
+      return { ...prev, additionalFields: updated };
+    });
+  };
+
   const resetForm = () => {
     setNewParty(initialPartyState);
     setIsSubmitting(false);
@@ -136,6 +155,7 @@ const PartiesPage = () => {
           state: newParty.state,
           pincode: newParty.pincode,
         },
+        additionalFields: newParty.additionalFields,
       };
 
       const res = await createParty(payload);
@@ -435,62 +455,53 @@ const PartiesPage = () => {
               )}
 
               {activeTab === 'additional' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-                      <input type="checkbox" className="rounded" defaultChecked />
-                      <span>Additional Field 1 Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="additionalField1"
-                      value={newParty.additionalField1}
-                      onChange={handleNewPartyChange}
-                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter value"
-                    />
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-                      <input type="checkbox" className="rounded" />
-                      <span>Additional Field 2 Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="additionalField2"
-                      value={newParty.additionalField2}
-                      onChange={handleNewPartyChange}
-                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter value"
-                    />
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-                      <input type="checkbox" className="rounded" />
-                      <span>Additional Field 3 Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="additionalField3"
-                      value={newParty.additionalField3}
-                      onChange={handleNewPartyChange}
-                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter value"
-                    />
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-                      <input type="checkbox" className="rounded" />
-                      <span>Additional Field 4 Name</span>
-                    </label>
-                    <input
-                      type="date"
-                      name="additionalField4"
-                      value={newParty.additionalField4}
-                      onChange={handleNewPartyChange}
-                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                <div className="space-y-3">
+                  {newParty.additionalFields.map((field, index) => (
+                    <div key={index} className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Field Name</label>
+                        <input
+                          type="text"
+                          value={field.label}
+                          onChange={(e) => handleFieldChange(index, 'label', e.target.value)}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. Phone Number, GST Code"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Field Value</label>
+                        <input
+                          type="text"
+                          value={field.value}
+                          onChange={(e) => handleFieldChange(index, 'value', e.target.value)}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter value"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveField(index)}
+                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                        title="Remove Field"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleAddField}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium mt-2"
+                  >
+                    <span>+ Add Another Field</span>
+                  </button>
+
+                  {newParty.additionalFields.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+                      No additional fields added. Click above to add one.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -585,9 +596,8 @@ const PartiesPage = () => {
                     {filteredParties.map((party) => (
                       <tr
                         key={party._id}
-                        className={`cursor-pointer border-b last:border-b-0 hover:bg-slate-50 ${
-                          selectedParty && selectedParty._id === party._id ? 'bg-blue-50' : ''
-                        }`}
+                        className={`cursor-pointer border-b last:border-b-0 hover:bg-slate-50 ${selectedParty && selectedParty._id === party._id ? 'bg-blue-50' : ''
+                          }`}
                         onClick={() => handlePartyClick(party)}
                       >
                         <td className="px-4 py-2">

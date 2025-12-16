@@ -21,10 +21,10 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     // Debug log to verify URL
     console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
-    
+
     return config;
   },
   (error) => {
@@ -108,5 +108,10 @@ export const searchOrders = (params = {}) => api.get('/orders', { params });
 // ✅ NEW: Missing functions added here
 export const assignOrder = (orderId, employeeId) => api.patch(`/orders/${orderId}/assign`, { employeeId });
 export const getMyOrders = () => api.get('/orders/my-orders');
+
+// --- Accounts Dashboard APIs ---
+export const getAccountsOrdersSummary = () => api.get('/accounts/orders/summary');
+export const getAccountsEmployees = () => api.get('/accounts/employees');
+export const getEmployeeOrderStats = (employeeId) => api.get(`/accounts/employees/${employeeId}/orders/summary`);
 
 export default api;

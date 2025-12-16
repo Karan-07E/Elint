@@ -19,7 +19,10 @@ import ManageOrders from "./pages/ManageOrders.jsx";
 import AccountsReport from "./pages/AccountsReport.jsx";
 import EmployeeDashboard from "./pages/EmployeeOrders.jsx";
 import EmployeeProgress from "./pages/EmployeeProgress.jsx";
+import AccountsDashboard from "./pages/AccountsDashboard.jsx";
+// import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import AccessDenied from "./pages/AccessDenied.jsx";
+import Inventory from "./pages/Inventory.jsx";
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -186,10 +189,12 @@ function App() {
                     element={isAuthenticated ? <AccountsReport /> : <Navigate to="/login" />}
                 />
 
-                {/* 6. Inventory -> ItemPage Alias */}
+
+
+                {/* 6. Inventory -> Dedicated Component */}
                 <Route
                     path="/accounts/inventory"
-                    element={isAuthenticated ? <ItemPage /> : <Navigate to="/login" />}
+                    element={isAuthenticated ? <Inventory /> : <Navigate to="/login" />}
                 />
 
                 {/* Manage Teams Page (Admin) */}
@@ -202,7 +207,7 @@ function App() {
 
                 {/* Accounts Team - Manage Teams */}
                 <Route
-                    path="/accounts/manage-teams"
+                    path="/orders/teams"
                     element={
                         isAuthenticated && getUserRole() === 'accounts team'
                             ? <AccountsTeamManage />
@@ -214,10 +219,22 @@ function App() {
 
                 {/* Accounts Team - Manage Orders */}
                 <Route
-                    path="/accounts/manage-orders"
+                    path="/orders/manage"
                     element={
-                        isAuthenticated && (getUserRole() === 'accounts team' || getUserRole() === 'employee')
+                        isAuthenticated && getUserRole() === 'accounts team'
                             ? <ManageOrders />
+                            : isAuthenticated
+                                ? <AccessDenied />
+                                : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Accounts Dashboard - NEW */}
+                <Route
+                    path="/accounts/dashboard"
+                    element={
+                        isAuthenticated && (getUserRole() === 'accounts team' || getUserRole() === 'admin')
+                            ? <AccountsDashboard />
                             : isAuthenticated
                                 ? <AccessDenied />
                                 : <Navigate to="/login" replace />

@@ -158,7 +158,7 @@ const ManageOrders = () => {
 
     const handleAssignNow = (e, orderId) => {
         e.stopPropagation(); // Prevent opening the side panel
-        navigate(`/accounts/manage-teams?jump=${orderId}`);
+        navigate(`/orders/teams?orderId=${orderId}`);
     };
 
     useEffect(() => {
@@ -469,7 +469,12 @@ const ManageOrders = () => {
                                                             <span className="text-sm font-medium text-slate-700">{mappedEmp}</span>
                                                         </div>
                                                     ) : (
-                                                        <span className="text-sm text-slate-400 italic">Unassigned</span>
+                                                        <button
+                                                            onClick={(e) => handleAssignNow(e, order._id)}
+                                                            className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition-colors shadow-sm"
+                                                        >
+                                                            Assign Now
+                                                        </button>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
