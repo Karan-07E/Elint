@@ -9,6 +9,7 @@ import Purchase from "./pages/Purchase.jsx";
 import PurchaseBill from "./pages/PurchaseBill.jsx";
 import PurchaseReport from "./pages/PurchaseReport.jsx";
 import PartiesPage from "./pages/Parties.jsx";
+import PartiesFollowUps from "./pages/PartiesFollowUps.jsx";
 import Settings from "./pages/Settings.jsx";
 import OrderDashboard from "./pages/OrderDashboard.jsx";
 import CreateOrder from "./pages/CreateOrder.jsx";
@@ -105,6 +106,22 @@ function App() {
                     path="/parties"
                     element={
                         isAuthenticated ? <PartiesPage /> : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Parties Page Alias (Accounts) */}
+                <Route
+                    path="/accounts/parties"
+                    element={
+                        isAuthenticated ? <PartiesPage /> : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Parties Follow Ups Page */}
+                <Route
+                    path="/accounts/parties/follow-ups"
+                    element={
+                        isAuthenticated ? <PartiesFollowUps /> : <Navigate to="/login" replace />
                     }
                 />
 

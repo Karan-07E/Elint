@@ -30,6 +30,7 @@ const Sidebar = () => {
   const [explicitAccountsOpen, setExplicitAccountsOpen] = useState(null);
   const [isPurchaseOpen, setIsPurchaseOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isPartiesOpen, setIsPartiesOpen] = useState(false);
 
   // Derived: Is the user currently inside the Accounts section?
   const isAccountsRoute = location.pathname.startsWith('/accounts') ||
@@ -56,6 +57,7 @@ const Sidebar = () => {
   React.useEffect(() => {
     if (location.pathname.startsWith('/purchase')) setIsPurchaseOpen(true);
     if (location.pathname.startsWith('/orders')) setIsOrdersOpen(true);
+    if (location.pathname.startsWith('/parties') || location.pathname.startsWith('/accounts/parties')) setIsPartiesOpen(true);
   }, [location.pathname]);
 
   const handleLogout = async () => {
@@ -149,11 +151,29 @@ const Sidebar = () => {
         },
         // Parties
         {
-          path: '/parties',
+          path: '/accounts/parties',
           icon: <LuUsers size={18} />,
           label: 'Parties',
           roles: ['user', 'admin', 'accounts team'],
-          permission: 'viewParties'
+          permission: 'viewParties',
+          isNestedDropdown: true,
+          stateKey: 'parties',
+          subItems: [
+            {
+              path: '/accounts/parties',
+              icon: <LuUsers size={18} />,
+              label: 'Parties List',
+              roles: ['user', 'admin', 'accounts team'],
+              permission: 'viewParties'
+            },
+            {
+              path: '/accounts/parties/follow-ups',
+              icon: <LuClipboardList size={18} />,
+              label: 'Parties Follow Ups',
+              roles: ['user', 'admin', 'accounts team'],
+              permission: 'viewParties'
+            }
+          ]
         },
 
         // Purchases (Nested Dropdown)
@@ -322,7 +342,7 @@ const Sidebar = () => {
                 });
               };
 
-              const isOpen = item.stateKey === 'orders' ? isOrdersOpen : isAccountsOpen;
+              const isOpen = item.stateKey === 'orders' ? isOrdersOpen : item.stateKey === 'parties' ? isPartiesOpen : isAccountsOpen;
               // Check if parent itself matches current path
               const isParentActive = item.path === location.pathname;
               const isAnySubItemActive = checkActive(item.subItems);
@@ -332,7 +352,9 @@ const Sidebar = () => {
                   e.preventDefault();
                   e.stopPropagation();
                 }
-                item.stateKey === 'orders' ? setIsOrdersOpen(!isOrdersOpen) : handleAccountsHeaderClick();
+                if (item.stateKey === 'orders') setIsOrdersOpen(!isOrdersOpen);
+                else if (item.stateKey === 'parties') setIsPartiesOpen(!isPartiesOpen);
+                else handleAccountsHeaderClick();
               };
 
               return (
@@ -380,29 +402,54 @@ const Sidebar = () => {
                     <ul className="space-y-1 pl-3 border-l-2 border-slate-800 ml-5">
                       {item.subItems.map((subItem, subIndex) => {
                         if (subItem.isNestedDropdown) {
-                          // Nested Dropdown (Purchases)
-                          const isNestedOpen = isPurchaseOpen;
+                          // Nested Dropdown (Parties & Purchases)
+                          const isNestedOpen = subItem.stateKey === 'parties' ? isPartiesOpen : isPurchaseOpen;
                           const isAnyNestedActive = subItem.subItems.some(nested => location.pathname === nested.path);
+                          const isParentActive = subItem.path === location.pathname;
+
+                          const toggleNested = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (subItem.stateKey === 'parties') setIsPartiesOpen(!isPartiesOpen);
+                            else setIsPurchaseOpen(!isPurchaseOpen);
+                          };
 
                           return (
                             <li key={`nested-${subIndex}`}>
                               <div
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsPurchaseOpen(!isPurchaseOpen);
-                                }}
                                 className={`
-                                  flex items-center justify-between py-2 px-3 rounded-md cursor-pointer transition-colors text-sm group/nested
-                                  ${isAnyNestedActive ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}
+                                  flex items-center justify-between py-2 px-3 rounded-md transition-colors text-sm group/nested relative
+                                  ${isAnyNestedActive || isParentActive ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}
                                 `}
                               >
-                                <div className="flex items-center gap-3">
-                                  <span className={isAnyNestedActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
-                                    {subItem.icon}
-                                  </span>
-                                  <span>{subItem.label}</span>
+                                {subItem.path ? (
+                                  <Link
+                                    to={subItem.path}
+                                    className="flex-1 flex items-center gap-3 cursor-pointer"
+                                  >
+                                    <span className={isAnyNestedActive || isParentActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
+                                      {subItem.icon}
+                                    </span>
+                                    <span>{subItem.label}</span>
+                                  </Link>
+                                ) : (
+                                  <div
+                                    onClick={toggleNested}
+                                    className="flex-1 flex items-center gap-3 cursor-pointer"
+                                  >
+                                    <span className={isAnyNestedActive || isParentActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
+                                      {subItem.icon}
+                                    </span>
+                                    <span>{subItem.label}</span>
+                                  </div>
+                                )}
+
+                                <div
+                                  onClick={toggleNested}
+                                  className="p-1 hover:bg-white/10 rounded cursor-pointer ml-2"
+                                >
+                                  <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
                                 </div>
-                                <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
                               </div>
 
                               {/* Nested Content */}
