@@ -23,6 +23,8 @@ import AccountsDashboard from "./pages/AccountsDashboard.jsx";
 // import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import AccessDenied from "./pages/AccessDenied.jsx";
 import Inventory from "./pages/Inventory.jsx";
+import Reports from "./pages/Reports.jsx";
+import ReportView from "./pages/ReportView.jsx";
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -299,6 +301,18 @@ function App() {
                                 ? <AccessDenied />
                                 : <Navigate to="/login" replace />
                     }
+                />
+
+                {/* Reports */}
+                <Route
+                    path="/reports"
+                    element={isAuthenticated ? <Reports /> : <Navigate to="/login" />}
+                />
+
+                {/* Report View */}
+                <Route
+                    path="/reports/:id"
+                    element={isAuthenticated ? <ReportView /> : <Navigate to="/login" />}
                 />
 
                 {/* Fallback Route */}

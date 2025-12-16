@@ -280,10 +280,10 @@ function EmployeeOrders() {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-3 flex-1">
                                     <span className="bg-gray-200 px-2 py-1 rounded font-mono text-xs">
-                                      {item.item?.code || 'N/A'}
+                                      {item.itemCode || item.item?.code || 'N/A'}
                                     </span>
                                     <span className="font-medium text-gray-900">
-                                      {item.item?.name || item.itemName || 'Unknown Item'}
+                                      {item.itemName || item.item?.name || 'Unknown Item'}
                                     </span>
                                     <span className="bg-blue-50 px-2 py-1 rounded-full text-xs text-blue-700">
                                       {item.quantity} {item.unit}

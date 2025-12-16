@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-import { getEmployeeProgress } from '../services/api';
+import { getMyOrders } from '../services/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 function EmployeeProgress() {
@@ -26,7 +26,7 @@ function EmployeeProgress() {
   const fetchProgressData = async () => {
     try {
       setLoading(true);
-      const response = await getEmployeeProgress();
+      const response = await getMyOrders();
       const ordersData = response.data.orders || [];
       setOrders(ordersData);
 

@@ -107,13 +107,24 @@ export const searchOrders = (params = {}) => api.get('/orders', { params });
 
 // ✅ NEW: Missing functions added here
 export const assignOrder = (orderId, data) => api.patch(`/orders/${orderId}/assign`, data);
-export const getMyOrders = () => api.get('/orders/my-orders');
+export const getMyOrders = () => api.get('/employees/my-orders');
 export const getMappings = () => api.get('/mappings');
 export const getEmployeeProgress = () => api.get('/orders/employee/progress');
+export const completeItem = (itemId) => api.patch(`/employees/items/${itemId}/complete`);
+export const getEmployeeStatistics = () => api.get('/employees/statistics');
+export const getEmployeeWorkHistory = (period = 'month') => api.get(`/employees/work-history?period=${period}`);
 
 // --- Accounts Dashboard APIs ---
 export const getAccountsOrdersSummary = () => api.get('/accounts/orders/summary');
 export const getAccountsEmployees = () => api.get('/accounts/employees');
 export const getEmployeeOrderStats = (employeeId) => api.get(`/accounts/employees/${employeeId}/orders/summary`);
+
+// --- Report APIs ---
+export const getNextReportNumber = () => api.get('/reports/next-number');
+export const createReport = (data) => api.post('/reports', data);
+export const getAllReports = () => api.get('/reports');
+export const getReportById = (id) => api.get(`/reports/${id}`);
+export const getReportsByOrderId = (orderId) => api.get(`/reports/order/${orderId}`);
+export const deleteReport = (id) => api.delete(`/reports/${id}`);
 
 export default api;

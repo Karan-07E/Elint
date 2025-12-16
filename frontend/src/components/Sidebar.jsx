@@ -162,7 +162,7 @@ const Sidebar = () => {
 
         // Accounts Report
         { 
-          path: '/reports', 
+          path: '/accounts/report', 
           icon: <LuFileChartColumn size={18} />, 
           label: 'Reports', 
           roles: ['user', 'admin', 'accounts team'], 
@@ -171,7 +171,7 @@ const Sidebar = () => {
 
         // Manage Orders (For Accounts)
         {
-          path: '/accounts/manage-orders',
+          path: '/orders/manage',
           icon: <LuClipboardList size={18} />,
           label: 'Manage Orders',
           roles: ['accounts team'],
@@ -180,7 +180,7 @@ const Sidebar = () => {
 
         // Inventory
         { 
-          path: '/items', // Reusing items path
+          path: '/accounts/inventory',
           icon: <LuWarehouse size={18} />, 
           label: 'Inventory', 
           roles: ['user', 'admin', 'accounts team'], 
@@ -196,6 +196,15 @@ const Sidebar = () => {
       label: 'Orders', 
       roles: ['user', 'admin', 'product team', 'accounts team'], 
       permission: 'viewOrders' 
+    },
+
+    // 4.5. Reports
+    {
+      path: '/reports',
+      icon: <LuFileChartColumn size={20} />,
+      label: 'Reports',
+      roles: ['user', 'admin', 'accounts team'],
+      permission: null
     },
 
     // 5. Order Calendar

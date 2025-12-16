@@ -1,128 +1,115 @@
 const mongoose = require('mongoose');
 
-// Sub-step tracking schema
-const subStepTrackingSchema = new mongoose.Schema({
-  subStepId: {
-    type: Number,
-    required: true
+// Assigned item schema - tracks each item assigned to the employee
+const assignedItemSchema = new mongoose.Schema({
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    required: true,
+    index: true
   },
-  name: {
-    type: String,
-    trim: true
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'completed'],
-    default: 'pending'
-  },
-  completedAt: {
-    type: Date,
-    default: null
-  }
-}, { _id: false });
-
-// Step tracking schema
-const stepTrackingSchema = new mongoose.Schema({
-  stepId: {
-    type: Number,
-    required: true
-  },
-  stepName: {
-    type: String,
-    trim: true
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'completed'],
-    default: 'pending'
-  },
-  completedAt: {
-    type: Date,
-    default: null
-  },
-  subSteps: [subStepTrackingSchema]
-}, { _id: false });
-
-// Item tracking schema
-const itemTrackingSchema = new mongoose.Schema({
   itemId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Item',
-    required: true
+    required: true,
+    index: true
+  },
+  itemCode: {
+    type: String,
+    required: true,
+    trim: true
   },
   itemName: {
     type: String,
     trim: true
   },
   quantity: {
-    type: Number
+    type: Number,
+    required: true
   },
   unit: {
     type: String,
     trim: true
   },
+  // Job number from Mapping schema (Format: EJB-00001)
+  jobNumber: {
+    type: String,
+    trim: true
+  },
+  // Manufacturing status
   status: {
     type: String,
     enum: ['pending', 'in-progress', 'completed'],
     default: 'pending'
   },
-  completedAt: {
-    type: Date,
-    default: null
-  },
-  steps: [stepTrackingSchema]
-}, { _id: false });
-
-// Order tracking schema
-const orderTrackingSchema = new mongoose.Schema({
-  orderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order',
-    required: true
-  },
-  poNumber: {
-    type: String,
-    trim: true
-  },
-  status: {
-    type: String,
-    enum: ['assigned', 'in-progress', 'completed'],
-    default: 'assigned'
-  },
+  // When item was assigned to this employee
   assignedAt: {
     type: Date,
     default: Date.now
   },
-  completedAt: {
+  // When manufacturing was started
+  startedAt: {
     type: Date,
     default: null
   },
-  items: [itemTrackingSchema]
-}, { _id: false });
+  // When item manufacturing was completed
+  manufactureCompletedAt: {
+    type: Date,
+    default: null
+  },
+  // Priority from order
+  priority: {
+    type: String,
+    enum: ['Normal', 'High', 'Urgent'],
+    default: 'Normal'
+  },
+  // Delivery date from order
+  deliveryDate: {
+    type: Date
+  },
+  // Track manufacturing progress (percentage)
+  progressPercentage: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  // Notes or remarks for this item
+  notes: {
+    type: String,
+    trim: true
+  }
+}, { _id: false, timestamps: true });
 
 // Main Employee schema
 const employeeSchema = new mongoose.Schema({
+  // Reference to User model
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
+  // Employee name (synced with User model)
   name: {
     type: String,
     required: true,
     trim: true
   },
+  // Employee ID (synced with User model)
   empId: {
     type: String,
     required: true,
     unique: true,
-    trim: true
+    trim: true,
+    index: true
   },
-  ordersAssigned: [orderTrackingSchema],
+  // Array of assigned items
+  assignedItems: [assignedItemSchema],
   
-  // Statistics and metadata
-  totalOrdersCompleted: {
+  // Statistics
+  totalItemsAssigned: {
     type: Number,
     default: 0
   },
@@ -130,16 +117,16 @@ const employeeSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  totalStepsCompleted: {
+  totalItemsInProgress: {
     type: Number,
     default: 0
   },
-  totalSubStepsCompleted: {
+  totalItemsPending: {
     type: Number,
     default: 0
   },
   
-  // Active tracking
+  // Activity tracking
   isActive: {
     type: Boolean,
     default: true
@@ -152,10 +139,12 @@ const employeeSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for better query performance
+// Compound indexes for efficient querying
 employeeSchema.index({ userId: 1 });
 employeeSchema.index({ empId: 1 });
-employeeSchema.index({ 'ordersAssigned.orderId': 1 });
+employeeSchema.index({ 'assignedItems.orderId': 1 });
+employeeSchema.index({ 'assignedItems.itemId': 1 });
+employeeSchema.index({ 'assignedItems.status': 1 });
 
 // Method to update last active timestamp
 employeeSchema.methods.updateLastActive = function() {
@@ -163,38 +152,63 @@ employeeSchema.methods.updateLastActive = function() {
   return this.save();
 };
 
-// Method to get active orders (not completed)
-employeeSchema.methods.getActiveOrders = function() {
-  return this.ordersAssigned.filter(order => order.status !== 'completed');
+// Method to get items by status
+employeeSchema.methods.getItemsByStatus = function(status) {
+  return this.assignedItems.filter(item => item.status === status);
 };
 
-// Method to calculate completion statistics
+// Method to get items for a specific order
+employeeSchema.methods.getItemsByOrder = function(orderId) {
+  return this.assignedItems.filter(item => item.orderId.toString() === orderId.toString());
+};
+
+// Method to calculate and update statistics
 employeeSchema.methods.calculateStats = function() {
-  let completedOrders = 0;
-  let completedItems = 0;
-  let completedSteps = 0;
-  let completedSubSteps = 0;
+  this.totalItemsAssigned = this.assignedItems.length;
+  this.totalItemsCompleted = this.assignedItems.filter(item => item.status === 'completed').length;
+  this.totalItemsInProgress = this.assignedItems.filter(item => item.status === 'in-progress').length;
+  this.totalItemsPending = this.assignedItems.filter(item => item.status === 'pending').length;
+};
 
-  this.ordersAssigned.forEach(order => {
-    if (order.status === 'completed') completedOrders++;
-    
-    order.items.forEach(item => {
-      if (item.status === 'completed') completedItems++;
-      
-      item.steps.forEach(step => {
-        if (step.status === 'completed') completedSteps++;
-        
-        step.subSteps.forEach(subStep => {
-          if (subStep.status === 'completed') completedSubSteps++;
-        });
-      });
-    });
-  });
+// Method to mark item as started
+employeeSchema.methods.startItem = function(itemId) {
+  const item = this.assignedItems.find(i => i.itemId.toString() === itemId.toString());
+  if (item && item.status === 'pending') {
+    item.status = 'in-progress';
+    item.startedAt = new Date();
+    this.calculateStats();
+  }
+  return item;
+};
 
-  this.totalOrdersCompleted = completedOrders;
-  this.totalItemsCompleted = completedItems;
-  this.totalStepsCompleted = completedSteps;
-  this.totalSubStepsCompleted = completedSubSteps;
+// Method to mark item as completed
+employeeSchema.methods.completeItem = function(itemId) {
+  const item = this.assignedItems.find(i => i.itemId.toString() === itemId.toString());
+  if (item && item.status !== 'completed') {
+    item.status = 'completed';
+    item.manufactureCompletedAt = new Date();
+    item.progressPercentage = 100;
+    this.calculateStats();
+  }
+  return item;
+};
+
+// Method to update item progress
+employeeSchema.methods.updateItemProgress = function(itemId, percentage) {
+  const item = this.assignedItems.find(i => i.itemId.toString() === itemId.toString());
+  if (item) {
+    item.progressPercentage = Math.min(Math.max(percentage, 0), 100);
+    if (percentage > 0 && item.status === 'pending') {
+      item.status = 'in-progress';
+      item.startedAt = item.startedAt || new Date();
+    }
+    if (percentage === 100 && item.status !== 'completed') {
+      item.status = 'completed';
+      item.manufactureCompletedAt = new Date();
+    }
+    this.calculateStats();
+  }
+  return item;
 };
 
 module.exports = mongoose.model('Employee', employeeSchema);

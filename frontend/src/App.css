@@ -45,3 +45,19 @@ body {
   align-items: center;
   background: linear-gradient(to right, #e0e7ff, #f0f9ff);
 }
+
+/* Print Styles */
+@media print {
+  body {
+    background: white !important;
+  }
+  
+  .min-h-screen {
+    background: white !important;
+  }
+  
+  /* Remove page margins for better print layout */
+  @page {
+    margin: 0.5cm;
+  }
+}

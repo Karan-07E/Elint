@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const authenticateToken = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permissions');
 
 // Middleware to allow admin or accounts team (copied from userRoutes)
 const allowAccountsOrAdmin = (req, res, next) => {
@@ -157,7 +159,9 @@ router.get('/', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
   }
 });
 
+// DEPRECATED: This route is now handled by /api/employees/my-orders using Mappings schema
 // Get assigned orders formatted for Dashboard (Employee View) - Fetching from Employee table
+/* 
 router.get('/my-orders', authenticateToken, async (req, res) => {
   try {
     // JWT payload has userId, not id
@@ -298,7 +302,10 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+*/
 
+// DEPRECATED: Employee routes moved to /api/employees/* using Mappings schema
+/*
 // Get employee progress - ALL orders (including completed)
 router.get('/employee/progress', authenticateToken, async (req, res) => {
   try {
@@ -347,6 +354,7 @@ router.get('/employee/progress', authenticateToken, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+*/
 
 // Get single order - Secured
 router.get('/:id', authenticateToken, async (req, res) => {
@@ -516,11 +524,9 @@ router.patch('/:id/assign', authenticateToken, allowAccountsOrAdmin, async (req,
         orderItem.assignedTo = employeeId;
 
         // Upsert Mapping (or create new)
-        // We check for existing mapping for this specific item assignment to avoid duplicates if re-assigned
-        // CRITICAL FIX: Use orderItem._id (Subdocument ID) instead of orderItem.item (Product ID)
-        // to support distinct job numbers for multiple lines of the same product.
+        // FIXED: Use orderItem.item (actual Item reference) not orderItem._id (subdocument ID)
         await Mapping.findOneAndUpdate(
-          { orderId: order._id, itemId: orderItem._id }, // Search by unique line item ID
+          { orderId: order._id, itemId: orderItem.item }, // Use actual Item ObjectId reference
           {
             assignedEmployeeId: employeeId,
             jobNumber: jobNumber
@@ -622,6 +628,8 @@ router.patch('/:id/item-completion', authenticateToken, async (req, res) => {
   }
 });
 
+// DEPRECATED: Employee tracking routes moved to /api/employees/* using Mappings schema
+/*
 // Update substep completion status in employee tracking
 router.patch('/employee/substep-completion', authenticateToken, async (req, res) => {
   try {
@@ -914,6 +922,7 @@ router.post('/employee/initialize-order', authenticateToken, async (req, res) =>
     res.status(500).json({ message: error.message });
   }
 });
+*/
 
 // Delete order
 router.delete('/:id', async (req, res) => {
@@ -925,6 +934,133 @@ router.delete('/:id', async (req, res) => {
     await order.deleteOne();
     res.json({ message: 'Order deleted successfully' });
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Assign items to employee
+router.post('/:orderId/assign-items', authenticateToken, checkPermission('Order Management'), async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { employeeId, items } = req.body; // items: [{ itemId, quantity, priority, deliveryDate }]
+
+    if (!employeeId || !items || items.length === 0) {
+      return res.status(400).json({ message: 'Employee ID and items are required' });
+    }
+
+    // Find order and employee
+    const order = await Order.findById(orderId).populate('items.item');
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const Employee = require('../models/Employee');
+    const Mapping = require('../models/Mapping');
+    const Item = require('../models/Item');
+    
+    let employee = await Employee.findOne({ userId: employeeId });
+    if (!employee) {
+      const User = require('../models/User');
+      const user = await User.findById(employeeId);
+      if (!user || user.role !== 'employee') {
+        return res.status(404).json({ message: 'Employee not found' });
+      }
+
+      // Create employee record if it doesn't exist
+      employee = new Employee({
+        userId: employeeId,
+        name: user.name,
+        empId: user.employeeId || `EMP${Date.now()}`,
+        assignedItems: []
+      });
+    }
+
+    // Process each item assignment
+    for (const itemAssignment of items) {
+      const { itemId, quantity, priority, deliveryDate } = itemAssignment;
+      
+      // Check if item exists in order - handle both populated and unpopulated cases
+      const orderItem = order.items.find(i => {
+        const orderItemId = i.item._id ? i.item._id.toString() : i.item.toString();
+        return orderItemId === itemId.toString();
+      });
+      
+      if (!orderItem) {
+        continue; // Skip invalid items
+      }
+
+      // Validate ObjectIds BEFORE querying
+      if (!mongoose.Types.ObjectId.isValid(orderId)) {
+        console.error('Invalid orderId:', orderId);
+        continue;
+      }
+      if (!mongoose.Types.ObjectId.isValid(itemId)) {
+        console.error('Invalid itemId:', itemId);
+        continue;
+      }
+      if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+        console.error('Invalid employeeId:', employeeId);
+        continue;
+      }
+
+      const item = await Item.findById(itemId);
+      if (!item) {
+        console.error('WARNING: itemId does not exist in Items collection!');
+        continue;
+      }
+
+      // Generate job number
+      const jobCount = await Mapping.countDocuments();
+      const jobNumber = `EJB-${String(jobCount + 1).padStart(5, '0')}`;
+
+      // Check if already assigned
+      const existingAssignment = employee.assignedItems.find(
+        ai => ai.orderId.toString() === orderId && ai.itemId.toString() === itemId
+      );
+
+      if (!existingAssignment) {
+        // Add to employee's assigned items
+        employee.assignedItems.push({
+          orderId: orderId,
+          itemId: itemId,
+          itemCode: item.code,
+          itemName: item.name,
+          quantity: quantity || orderItem.quantity,
+          unit: item.unit || 'units',
+          jobNumber: jobNumber,
+          status: 'pending',
+          priority: priority || 'medium',
+          deliveryDate: deliveryDate || order.estimatedDeliveryDate
+        });
+
+        // Create mapping entry
+        const newMapping = await Mapping.create({
+          orderId: orderId,
+          itemId: itemId,
+          assignedEmployeeId: employeeId,
+          jobNumber: jobNumber
+        });
+
+        // Update order item's assignedTo field
+        orderItem.assignedTo = employeeId;
+      }
+    }
+
+    await employee.save();
+    await order.save();
+
+    res.json({ 
+      message: 'Items assigned successfully',
+      assignedCount: items.length,
+      employee: {
+        id: employee._id,
+        name: employee.name,
+        empId: employee.empId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error assigning items to employee:', error);
     res.status(500).json({ message: error.message });
   }
 });

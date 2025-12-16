@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { createItem, getItemById, updateItem, getAllItems, deleteItem } from "../services/api";
+import { createItem, getItemById, updateItem, getAllItems, deleteItem, completeItem } from "../services/api";
 import Sidebar from "../components/Sidebar";
 import { canCreate, canEdit, canDelete, canExportReports } from "../utils/permissions";
 
@@ -90,6 +90,8 @@ export default function ItemPage() {
   const [checkedSteps, setCheckedSteps] = useState({});
   const [employeeTracking, setEmployeeTracking] = useState(null);
   const [itemCompletionStatus, setItemCompletionStatus] = useState({});
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [completingItem, setCompletingItem] = useState(false);
 
   // States for item name dropdown
   const [showItemDropdown, setShowItemDropdown] = useState(false);
@@ -152,7 +154,7 @@ export default function ItemPage() {
       
       if (userRole === 'employee') {
         // For employees, fetch only assigned items from their orders
-        const ordersResponse = await fetch('http://localhost:5000/api/orders/my-orders', {
+        const ordersResponse = await fetch('http://localhost:5000/api/employees/my-orders', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -160,25 +162,24 @@ export default function ItemPage() {
         const ordersData = await ordersResponse.json();
         
         // Fetch employee tracking data
-        const trackingResponse = await fetch('http://localhost:5000/api/orders/employee/tracking', {
+        const trackingResponse = await fetch('http://localhost:5000/api/employees/my-items', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
         });
         const trackingData = await trackingResponse.json();
-        setEmployeeTracking(trackingData.employee || null);
         
-        // Build completion status map from employee tracking
+        // Build completion status map from Mappings data
         const completionMap = {};
-        if (trackingData.employee && trackingData.employee.ordersAssigned) {
-          trackingData.employee.ordersAssigned.forEach(order => {
-            order.items.forEach(item => {
-              completionMap[item.itemId] = {
-                status: item.status,
-                completedAt: item.completedAt,
-                steps: item.steps
-              };
-            });
+        if (trackingData.items) {
+          trackingData.items.forEach(mapping => {
+            completionMap[mapping.itemId] = {
+              status: mapping.status,
+              completedAt: mapping.completedAt,
+              startedAt: mapping.startedAt,
+              progressPercentage: mapping.progressPercentage,
+              notes: mapping.notes
+            };
           });
         }
         setItemCompletionStatus(completionMap);
@@ -187,12 +188,34 @@ export default function ItemPage() {
         const assignedItemIds = new Set();
         const assignedItems = [];
         
+        // Also fetch full item details from my-items which includes processes
+        const itemDetailsMap = {};
+        if (trackingData.items) {
+          trackingData.items.forEach(mapping => {
+            if (mapping.itemId && mapping.item) {
+              itemDetailsMap[mapping.itemId] = mapping.item;
+            }
+          });
+        }
+        
         (ordersData.orders || []).forEach(order => {
           (order.items || []).forEach(orderItem => {
-            const itemId = orderItem.item?._id;
+            const itemId = orderItem.itemId;
             if (itemId && !assignedItemIds.has(itemId)) {
               assignedItemIds.add(itemId);
-              assignedItems.push(orderItem.item);
+              // Get full item details from tracking data (includes processes)
+              const fullItem = itemDetailsMap[itemId];
+              assignedItems.push({
+                _id: itemId,
+                code: orderItem.itemCode || fullItem?.code,
+                name: orderItem.itemName || fullItem?.name,
+                unit: orderItem.unit || fullItem?.unit,
+                processes: fullItem?.processes || [],
+                type: fullItem?.type,
+                category: fullItem?.category,
+                openingQty: fullItem?.openingQty || 0,
+                currentStock: fullItem?.currentStock || fullItem?.openingQty || 0
+              });
             }
           });
         });
@@ -782,11 +805,19 @@ export default function ItemPage() {
   };
 
   const handleViewSteps = (item) => {
+    // Don't allow opening completed items
+    const completionData = itemCompletionStatus[item._id];
+    if (completionData?.status === 'completed') {
+      setMessage('This item has already been completed!');
+      setTimeout(() => setMessage(null), 2000);
+      return;
+    }
+    
     setViewingItem(item);
     setShowStepsModal(true);
+    setCurrentStepIndex(0); // Reset to first step
     
     // Load checked substeps from employee tracking
-    const completionData = itemCompletionStatus[item._id];
     const initialCheckedSteps = {};
     
     if (completionData && completionData.steps) {
@@ -814,92 +845,49 @@ export default function ItemPage() {
     }
     
     // Update UI immediately
-    setCheckedSteps(prev => ({ ...prev, [key]: true }));
+    const newCheckedSteps = { ...checkedSteps, [key]: true };
+    setCheckedSteps(newCheckedSteps);
+  };
+
+  const handleCompleteItem = async () => {
+    if (!viewingItem) return;
     
     try {
-      // Find the order that contains this item
-      let orderId = null;
-      if (employeeTracking && employeeTracking.ordersAssigned) {
-        for (const order of employeeTracking.ordersAssigned) {
-          if (order.items.some(item => item.itemId === viewingItem._id)) {
-            orderId = order.orderId;
-            break;
-          }
-        }
-      }
+      setCompletingItem(true);
+      const response = await completeItem(viewingItem._id);
       
-      if (!orderId) {
-        setError('Order not found for this item');
-        return;
-      }
-      
-      // Call backend API to mark substep as completed
-      const response = await fetch('http://localhost:5000/api/orders/employee/substep-completion', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          orderId: orderId,
-          itemId: viewingItem._id,
-          stepId: stepId,
-          subStepId: subStepId
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        // Update employee tracking data
-        setEmployeeTracking(data.employee);
-        
-        // Rebuild completion status map
-        const completionMap = {};
-        if (data.employee && data.employee.ordersAssigned) {
-          data.employee.ordersAssigned.forEach(order => {
-            order.items.forEach(item => {
-              completionMap[item.itemId] = {
-                status: item.status,
-                completedAt: item.completedAt,
-                steps: item.steps
-              };
-            });
-          });
+      // Update item completion status
+      setItemCompletionStatus(prev => ({
+        ...prev,
+        [viewingItem._id]: {
+          ...prev[viewingItem._id],
+          status: 'completed',
+          completedAt: new Date().toISOString()
         }
-        setItemCompletionStatus(completionMap);
-        
-        // Show completion message if item is now completed
-        if (data.cascadeInfo.itemCompleted) {
-          setMessage(`Item "${viewingItem.name}" has been completed!`);
-          setTimeout(() => {
-            setShowStepsModal(false);
-            loadItems(); // Refresh items list
-          }, 1500);
-        }
-        
-        // Show order completion message
-        if (data.cascadeInfo.orderCompleted) {
-          setMessage('Order completed! All items in this order are done.');
-        }
-      } else {
-        setError(data.message || 'Failed to update substep completion');
-        // Revert UI change
-        setCheckedSteps(prev => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-      }
-    } catch (err) {
-      console.error('Error updating substep:', err);
-      setError('Failed to update substep completion');
-      // Revert UI change
-      setCheckedSteps(prev => {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
-      });
+      }));
+      
+      // Refresh items list
+      await loadItems();
+      
+      // Show different message based on whether order was completed
+      const successMessage = response.data.orderCompleted
+        ? '🎉 All items completed! Order marked as completed and moved to history.'
+        : '✅ Item completed successfully!';
+      
+      setMessage(successMessage);
+      
+      // Close modal and clear message
+      setTimeout(() => {
+        setShowStepsModal(false);
+        setViewingItem(null);
+        setCurrentStepIndex(0);
+        setMessage(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Error completing item:', error);
+      setError('Failed to mark item as completed: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setCompletingItem(false);
     }
   };
 
@@ -2758,64 +2746,164 @@ export default function ItemPage() {
             <div className="flex-1 overflow-y-auto p-6">
               {viewingItem.processes && viewingItem.processes.length > 0 ? (
                 <div className="space-y-4">
-                  {viewingItem.processes.map((process, processIdx) => (
-                    <div key={process.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                      {/* Step Header */}
-                      <div className="bg-blue-50 px-4 py-3 border-b border-blue-100">
-                        <div className="flex items-center gap-3">
-                          <span className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-sm">
-                            {processIdx + 1}
-                          </span>
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-gray-900">{process.stepName}</h3>
-                            {process.description && (
-                              <p className="text-sm text-gray-600 mt-1">{process.description}</p>
-                            )}
-                          </div>
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            process.stepType === 'testing' 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {process.stepType === 'testing' ? '🧪 Testing' : '⚙️ Execution'}
-                          </span>
-                        </div>
+                  {/* Progress Indicator */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-blue-900">
+                        Step {currentStepIndex + 1} of {viewingItem.processes.length}
+                      </span>
+                      <div className="flex gap-1">
+                        {viewingItem.processes.map((_, idx) => (
+                          <div 
+                            key={idx}
+                            className={`w-8 h-1.5 rounded-full ${
+                              idx < currentStepIndex 
+                                ? 'bg-green-500' 
+                                : idx === currentStepIndex 
+                                ? 'bg-blue-600' 
+                                : 'bg-gray-300'
+                            }`}
+                          />
+                        ))}
                       </div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${((currentStepIndex + 1) / viewingItem.processes.length) * 100}%` }}
+                      />
+                    </div>
+                  </div>
 
-                      {/* Sub-steps */}
-                      {process.subSteps && process.subSteps.length > 0 && (
-                        <div className="p-4 bg-gray-50">
-                          <h4 className="text-sm font-semibold text-gray-700 mb-3">Sub-steps:</h4>
-                          <div className="space-y-2">
-                            {process.subSteps.map((subStep) => {
-                              const isChecked = checkedSteps[`${process.id}-${subStep.id}`];
-                              return (
-                                <div key={subStep.id} className="flex items-start gap-3 bg-white p-3 rounded border border-gray-200">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked || false}
-                                    onChange={() => handleStepCheckbox(process.id, subStep.id)}
-                                    disabled={isChecked}
-                                    className={`h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5 ${
-                                      isChecked ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
-                                    }`}
-                                  />
-                                  <div className="flex-1">
-                                    <div className={`text-sm font-medium ${isChecked ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
-                                      {subStep.name}
+                  {/* Current Step Only */}
+                  {(() => {
+                    const process = viewingItem.processes[currentStepIndex];
+                    if (!process) return null;
+                    
+                    // Check if all substeps are completed
+                    const allSubStepsCompleted = process.subSteps && process.subSteps.length > 0
+                      ? process.subSteps.every(subStep => checkedSteps[`${process.id}-${subStep.id}`])
+                      : true;
+                    
+                    return (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                        {/* Step Header */}
+                        <div className="bg-blue-50 px-4 py-3 border-b border-blue-100">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white font-bold text-lg">
+                              {currentStepIndex + 1}
+                            </span>
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-gray-900 text-lg">{process.stepName}</h3>
+                              {process.description && (
+                                <p className="text-sm text-gray-600 mt-1">{process.description}</p>
+                              )}
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              process.stepType === 'testing' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {process.stepType === 'testing' ? '🧪 Testing' : '⚙️ Execution'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Sub-steps */}
+                        {process.subSteps && process.subSteps.length > 0 ? (
+                          <div className="p-6 bg-gray-50">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-4">Sub-steps to complete:</h4>
+                            <div className="space-y-3">
+                              {process.subSteps.map((subStep) => {
+                                const isChecked = checkedSteps[`${process.id}-${subStep.id}`];
+                                return (
+                                  <div key={subStep.id} className="flex items-start gap-3 bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked || false}
+                                      onChange={() => handleStepCheckbox(process.id, subStep.id)}
+                                      disabled={isChecked}
+                                      className={`h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5 ${
+                                        isChecked ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
+                                      }`}
+                                    />
+                                    <div className="flex-1">
+                                      <div className={`text-sm font-medium ${isChecked ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                                        {subStep.name}
+                                      </div>
+                                      {subStep.description && (
+                                        <div className="text-xs text-gray-500 mt-1">{subStep.description}</div>
+                                      )}
                                     </div>
-                                    {subStep.description && (
-                                      <div className="text-xs text-gray-500 mt-1">{subStep.description}</div>
+                                    {isChecked && (
+                                      <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
                                     )}
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
+                            
+                            {/* Next Button - Only show when all substeps are completed */}
+                            {allSubStepsCompleted && currentStepIndex < viewingItem.processes.length - 1 && (
+                              <div className="mt-6 flex justify-end">
+                                <button
+                                  onClick={() => setCurrentStepIndex(currentStepIndex + 1)}
+                                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+                                >
+                                  Next Step
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                            
+                            {/* Complete Item Button */}
+                            {allSubStepsCompleted && currentStepIndex === viewingItem.processes.length - 1 && (
+                              <div className="mt-6 flex justify-center">
+                                <button
+                                  onClick={() => handleCompleteItem(viewingItem._id)}
+                                  disabled={completingItem}
+                                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
+                                >
+                                  {completingItem ? (
+                                    <>
+                                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      Completing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                      Complete Item
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        ) : (
+                          <div className="p-6 bg-gray-50 text-center text-gray-500">
+                            No sub-steps defined for this step.
+                            {currentStepIndex < viewingItem.processes.length - 1 && (
+                              <button
+                                onClick={() => setCurrentStepIndex(currentStepIndex + 1)}
+                                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                              >
+                                Next Step →
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-500">
