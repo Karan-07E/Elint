@@ -12,6 +12,8 @@ const allowAccountsOrAdmin = (req, res, next) => {
 };
 const Party = require('../models/Party');
 const Item = require('../models/Item');
+const Mapping = require('../models/Mapping');
+const Counter = require('../models/Counter');
 
 // Middleware to allow admin or accounts team (copied from userRoutes)
 // Ensuring it's available for use in routes
@@ -407,28 +409,45 @@ router.patch('/:id/assign', authenticateToken, allowAccountsOrAdmin, async (req,
   try {
     const { employeeId } = req.body;
     if (!employeeId) return res.status(400).json({ message: 'employeeId required' });
-    
+
     // Find the order first
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    
+
     // Update order-level assignment
     order.assignedAccountEmployee = employeeId;
-    
-    // Also assign ALL items to the same employee
-    order.items.forEach((item, index) => {
-      order.items[index].assignedTo = employeeId;
-    });
-    
+
+    // Also assign ALL items to the same employee and create Mappings
+    // Use for...of to handle await
+    for (let i = 0; i < order.items.length; i++) {
+      order.items[i].assignedTo = employeeId;
+
+      // Generate Job Number
+      const counter = await Counter.findOneAndUpdate(
+        { name: 'jobNumber' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      const jobNumber = `EJB-${String(counter.seq).padStart(5, '0')}`;
+
+      // Create Mapping
+      await Mapping.create({
+        orderId: order._id,
+        itemId: order.items[i].item, // Product ID
+        assignedEmployeeId: employeeId,
+        jobNumber: jobNumber
+      });
+    }
+
     await order.save();
-    
+
     // Populate and return
     const updatedOrder = await Order.findById(req.params.id)
       .populate('party', 'name phone')
       .populate('items.item', 'name')
       .populate('items.assignedTo', 'name employeeId')
       .populate('assignedAccountEmployee', 'name employeeId');
-    
+
     res.json(updatedOrder);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -446,20 +465,40 @@ router.patch('/:id/assign-items', authenticateToken, allowAccountsOrAdmin, async
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    // Update each item's assignedTo field
-    itemAssignments.forEach(({ itemIndex, employeeId }) => {
+    // Update each item's assignedTo field and create Mapping
+    for (const assignment of itemAssignments) {
+      const { itemIndex, employeeId } = assignment;
+
       if (itemIndex >= 0 && itemIndex < order.items.length) {
         order.items[itemIndex].assignedTo = employeeId || null;
+
+        // Only create mapping if assigning to an employee (not unassigning)
+        if (employeeId) {
+          // Generate Job Number
+          const counter = await Counter.findOneAndUpdate(
+            { name: 'jobNumber' },
+            { $inc: { seq: 1 } },
+            { new: true, upsert: true }
+          );
+          const jobNumber = `EJB-${String(counter.seq).padStart(5, '0')}`;
+
+          await Mapping.create({
+            orderId: order._id,
+            itemId: order.items[itemIndex].item,
+            assignedEmployeeId: employeeId,
+            jobNumber: jobNumber
+          });
+        }
       }
-    });
+    }
 
     await order.save();
-    
+
     const updatedOrder = await Order.findById(req.params.id)
       .populate('party', 'name phone')
       .populate('items.item', 'name')
       .populate('items.assignedTo', 'name employeeId');
-    
+
     res.json(updatedOrder);
   } catch (error) {
     res.status(500).json({ message: error.message });
