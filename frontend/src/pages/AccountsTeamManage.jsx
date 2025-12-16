@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
-import { getAllOrders, assignOrder, updateOrder } from '../services/api';
+import { getAllOrders, assignOrder, updateOrder, getMappings } from '../services/api';
 import {
   LuCalendar,
   LuClock,
@@ -98,9 +98,9 @@ const PriorityChip = ({ priority }) => {
   );
 };
 
-const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedEmployeeId, domRef, isHighlighted, existingJobNumbers }) => {
+const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedEmployeeId, domRef, isHighlighted, existingJobNumbers, orderMapping }) => {
   const [assigneeId, setAssigneeId] = useState(selectedEmployeeId || '');
-  const [jobNumber, setJobNumber] = useState(''); // Map Job Number to poNumber - Start empty as requested
+  const [itemJobs, setItemJobs] = useState({}); // { [itemId]: 'EJB-00001', ... }
   const [isExiting, setIsExiting] = useState(false);
   const [error, setError] = useState('');
 
@@ -108,11 +108,36 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
     if (selectedEmployeeId) setAssigneeId(selectedEmployeeId);
   }, [selectedEmployeeId]);
 
+  // Reset local state when order changes or collapses
+  useEffect(() => {
+    // Initialize with existing values from mapping
+    const initialJobs = {};
+    if (orderMapping && orderMapping.items) {
+      orderMapping.items.forEach(i => {
+        // i.itemId is the subdocument ID (string or ObjectId)
+        initialJobs[i.itemId] = i.jobNumber;
+      });
+    }
+    setItemJobs(initialJobs);
+  }, [order._id, orderMapping]);
+
   const { start, deadline } = computeOrderDates(order);
   const customer = order.customerName || order.party?.name || 'Customer';
   const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal');
   const totalAmount = order.totalAmount || 0;
   const itemCount = (order.items || []).length;
+
+  const handleGenerateItemJob = (itemId) => {
+    // Collect all currently known job numbers (DB + Local)
+    const currentKnown = new Set(existingJobNumbers);
+    Object.values(itemJobs).forEach(j => {
+      if (j) currentKnown.add(j.toUpperCase());
+    });
+
+    const nextJob = getNextJobNumber(currentKnown);
+    setItemJobs(prev => ({ ...prev, [itemId]: nextJob }));
+    setError('');
+  };
 
   const handleAssign = () => {
     setError('');
@@ -120,24 +145,34 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
     // Validation
     if (!assigneeId) return setError('Please select an employee.');
 
-    // Auto-generate if empty (optional safety) or validate strict format if manual
-    let finalJobNumber = jobNumber.trim();
-    if (!finalJobNumber) return setError('Job Number is required. Click Generate.');
-
-    // Regex validation for EJB-xxxxx
-    if (!/^EJB-\d{5}$/i.test(finalJobNumber)) {
-      return setError('Job Number must be in format EJB-00001');
+    // Check if ALL items have a job number
+    const missingItems = order.items.filter(item => !itemJobs[item._id] || !itemJobs[item._id].trim());
+    if (missingItems.length > 0) {
+      return setError('Each item must have a job number before assignment.');
     }
 
-    // Uniqueness Check (Client-side against loaded orders)
-    // We exclude the current order's own PO number from the check
-    if (existingJobNumbers.has(jobNumber.trim().toLowerCase()) && jobNumber.trim().toLowerCase() !== (order.poNumber || '').toLowerCase()) {
-      return setError('Job Number already exists.');
+    // Validate format for all
+    for (const item of order.items) {
+      const jn = itemJobs[item._id];
+      if (!/^EJB-\d{5}$/i.test(jn)) {
+        return setError(`Invalid format for item ${item.itemName || 'Item'}: must be EJB-00001`);
+      }
     }
 
     setIsExiting(true);
+
+    // Prepare payload: Map each item to its job number
+    const assignmentPayload = {
+      employeeId: assigneeId,
+      items: order.items.map(item => ({
+        itemId: item._id, // Use _id or item (ref) depending on what backend expects, usually item._id from population
+        jobNumber: itemJobs[item._id]
+      }))
+    };
+
     setTimeout(() => {
-      onAssign(order._id, assigneeId, jobNumber.trim());
+      // Pass the payload object instead of simple args
+      onAssign(order._id, assignmentPayload);
     }, 400);
   };
 
@@ -198,7 +233,7 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
       </div>
 
       {/* Expanded Content */}
-      <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+      <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <div className="p-6 pt-2 bg-slate-50/50 border-t border-slate-100">
 
           <div className="flex flex-col lg:flex-row gap-8">
@@ -216,26 +251,44 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
                 </div>
               </div>
 
-              {/* Table */}
+              {/* Table with Items and Job Number Generation */}
               <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-100">
                     <tr>
                       <th className="px-4 py-3">Item Name</th>
-                      <th className="px-4 py-3">Delivery</th>
+                      <th className="px-4 py-3 w-40">Job Number</th>
                       <th className="px-4 py-3 text-right">Qty</th>
                       <th className="px-4 py-3 text-right">Amt</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {(order.items || []).map((item, i) => (
-                      <tr key={i} className="group/row hover:bg-blue-50/30 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-700">{item.itemName || item.name}</td>
-                        <td className="px-4 py-3 text-slate-500">{formatDate(item.deliveryDate)}</td>
-                        <td className="px-4 py-3 text-right text-slate-600 font-mono bg-slate-50/50 group-hover/row:bg-transparent transition-colors">{item.quantity}</td>
-                        <td className="px-4 py-3 text-right text-slate-600 font-mono">{item.amount?.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {(order.items || []).map((item, i) => {
+                      const jobNo = itemJobs[item._id] || '';
+                      return (
+                        <tr key={item._id || i} className="group/row hover:bg-blue-50/30 transition-colors">
+                          <td className="px-4 py-3 font-medium text-slate-700">{item.itemName || item.name}</td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-2">
+                              {jobNo ? (
+                                <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded border border-slate-200 block w-full text-center">
+                                  {jobNo}
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleGenerateItemJob(item._id)}
+                                  className="w-full py-1 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                                >
+                                  Generate
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-600 font-mono">{item.quantity}</td>
+                          <td className="px-4 py-3 text-right text-slate-600 font-mono">{item.amount?.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-medium tracking-wide">
@@ -249,31 +302,6 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
             <div className="w-full lg:w-72 flex flex-col justify-end">
               <div className="bg-white p-5 rounded-[20px] border border-blue-100 shadow-lg shadow-blue-500/5 space-y-4 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-green-400"></div>
-
-                {/* Job Number Input */}
-                <div>
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex justify-between items-center">
-                    <span>Job Number (PO #) <span className="text-red-500">*</span></span>
-                    <button
-                      onClick={() => {
-                        const next = getNextJobNumber(existingJobNumbers);
-                        setJobNumber(next);
-                        setError('');
-                      }}
-                      className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100 transition-colors"
-                    >
-                      Generate Next
-                    </button>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border-0 ring-1 ring-slate-200 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all placeholder:text-slate-400"
-                    placeholder="EJB-00001"
-                    value={jobNumber}
-                    onChange={(e) => setJobNumber(e.target.value)}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1 text-right">Format: EJB-00001</p>
-                </div>
 
                 {/* Assignee Select */}
                 <div>
@@ -389,7 +417,7 @@ const EmployeeCard = ({ employee, stats, isSelected, onClick }) => {
             <div className="space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
               {stats.activeOrders.map(o => (
                 <div key={o._id} className="text-xs bg-slate-50/80 p-2 rounded border border-slate-100 flex justify-between items-center">
-                  <span className="font-medium text-slate-600">{o.poNumber || 'PO-####'}</span>
+                  <span className="font-medium text-slate-600">{o.displayJobNumber || o.poNumber || 'PO-####'}</span>
                   <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{o.status || 'Pending'}</span>
                 </div>
               ))}
@@ -411,6 +439,7 @@ const AccountsTeamManage = () => {
 
   const [allOrders, setAllOrders] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [mappings, setMappings] = useState([]); // Store fetched mappings
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -425,6 +454,14 @@ const AccountsTeamManage = () => {
       const token = localStorage.getItem('token');
       // Fetch Orders
       const ordersRes = await getAllOrders();
+      // Fetch Mappings
+      let mappingsData = [];
+      try {
+        const mappingsRes = await getMappings();
+        mappingsData = mappingsRes.data || [];
+      } catch (e) { console.error('Error fetching mappings', e); }
+      setMappings(mappingsData);
+
       // Fetch Employees
       let employeesData = [];
       if (token) {
@@ -484,8 +521,15 @@ const AccountsTeamManage = () => {
       (o.assignedAccountEmployee?._id === empId) ||
       (o.accountsEmployee === empId)
     );
-    const completed = empOrders.filter(o => o.status === 'Completed').length;
-    const active = empOrders.filter(o => o.status !== 'Completed');
+    // Enrich orders with job numbers for display
+    const enrichedOrders = empOrders.map(o => {
+      const mapping = mappings.find(m => m.orderId === o._id);
+      const jobNumbers = mapping ? mapping.items.map(i => i.jobNumber).join(', ') : '';
+      return { ...o, displayJobNumber: jobNumbers || o.poNumber };
+    });
+
+    const completed = enrichedOrders.filter(o => o.status === 'Completed').length;
+    const active = enrichedOrders.filter(o => o.status !== 'Completed');
     return {
       total: empOrders.length,
       completed,
@@ -497,28 +541,40 @@ const AccountsTeamManage = () => {
   // Create a Set of existing Job Numbers (poNumbers) for quick lookup
   const existingJobNumbers = useMemo(() => {
     const set = new Set();
-    allOrders.forEach(o => {
-      if (o.poNumber) set.add(o.poNumber.trim().toLowerCase());
+    // 1. Add all job numbers from Mappings (Source of Truth)
+    mappings.forEach(m => {
+      if (m.items) {
+        m.items.forEach(i => set.add(i.jobNumber.trim().toLowerCase()));
+      }
     });
+    // 2. Add PO numbers just in case (optional, but requested format checks EJB-xxxxx)
+    // Actually, only include EJB-xxxxx format
     return set;
-  }, [allOrders]);
+  }, [mappings]);
 
-  const handleAssign = async (orderId, employeeId, jobNumber) => {
+  const handleAssign = async (orderId, payload) => {
     try {
+      const { employeeId, items } = payload;
       const emp = employees.find(e => e._id === employeeId);
       if (employeeId) setSelectedEmployeeId(employeeId);
 
-      // 1. Update Job Number (PO Number) First
-      // We assume simple success if no error thrown.
-      await updateOrder(orderId, { poNumber: jobNumber });
+      // 1. Assign Order with Item-Level Job Numbers
+      // We pass the payload directly to the API
+      await assignOrder(orderId, payload);
 
-      // 2. Assign Order
-      await assignOrder(orderId, employeeId);
-
-      setToast({ message: `Assigned Job ${jobNumber} to ${emp?.name || 'Employee'}`, type: 'success' });
+      const jobSummary = items.length === 1 ? items[0].jobNumber : `${items.length} Job Numbers`;
+      setToast({ message: `Assigned ${jobSummary} to ${emp?.name || 'Employee'}`, type: 'success' });
 
       // Update local state to reflect changes immediately
-      setAllOrders(prev => prev.map(o => o._id === orderId ? { ...o, assignedAccountEmployee: employeeId, poNumber: jobNumber } : o));
+      // We mark the order as assigned to the employee. 
+      // Note: We don't set a single 'poNumber' anymore since it's per item
+      setAllOrders(prev => prev.map(o => o._id === orderId ? { ...o, assignedAccountEmployee: employeeId, status: 'Assigned' } : o));
+
+      // Refresh mappings to get the new ones? 
+      // Ideally yes, but for now we trust optimistic UI. 
+      // Or we can append to mappings locally to allow duplicates check to work immediately for next assignment?
+      const newItemEntry = { orderId, items: items.map(i => ({ jobNumber: i.jobNumber })) };
+      setMappings(prev => [...prev, newItemEntry]);
 
       setTimeout(() => setToast(null), 3000);
     } catch (e) {
@@ -604,6 +660,7 @@ const AccountsTeamManage = () => {
                       selectedEmployeeId={selectedEmployeeId}
                       isHighlighted={highlightedOrderId === order._id}
                       existingJobNumbers={existingJobNumbers}
+                      orderMapping={mappings.find(m => m.orderId === order._id || m._id === order._id)}
                     />
                   ))
                 )}

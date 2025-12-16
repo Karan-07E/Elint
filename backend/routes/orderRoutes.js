@@ -405,38 +405,53 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // Assign order to employee (accounts team or admin)
+// Assign order to employee with item-level job numbers
 router.patch('/:id/assign', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
   try {
-    const { employeeId } = req.body;
+    const { employeeId, items } = req.body; // items: [{ itemId, jobNumber }]
     if (!employeeId) return res.status(400).json({ message: 'employeeId required' });
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Items with job numbers are required' });
+    }
 
-    // Find the order first
+    // Uniqueness Check First
+    const jobNumbers = items.map(i => i.jobNumber);
+    const existingMappings = await Mapping.find({ jobNumber: { $in: jobNumbers } });
+    if (existingMappings.length > 0) {
+      const duplicates = existingMappings.map(m => m.jobNumber).join(', ');
+      return res.status(409).json({ message: `Duplicate Job Numbers found: ${duplicates}. Please regenerate.` });
+    }
+
+    // Find the order
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
     // Update order-level assignment
     order.assignedAccountEmployee = employeeId;
 
-    // Also assign ALL items to the same employee and create Mappings
-    // Use for...of to handle await
-    for (let i = 0; i < order.items.length; i++) {
-      order.items[i].assignedTo = employeeId;
+    // Process Item Assignments
+    for (const assignment of items) {
+      const { itemId, jobNumber } = assignment;
 
-      // Generate Job Number
-      const counter = await Counter.findOneAndUpdate(
-        { name: 'jobNumber' },
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true }
-      );
-      const jobNumber = `EJB-${String(counter.seq).padStart(5, '0')}`;
+      // Find item in order (using _id comparison)
+      const orderItem = order.items.find(i => i._id.toString() === itemId || i.item.toString() === itemId);
 
-      // Create Mapping
-      await Mapping.create({
-        orderId: order._id,
-        itemId: order.items[i].item, // Product ID
-        assignedEmployeeId: employeeId,
-        jobNumber: jobNumber
-      });
+      if (orderItem) {
+        orderItem.assignedTo = employeeId;
+
+        // Upsert Mapping (or create new)
+        // We check for existing mapping for this specific item assignment to avoid duplicates if re-assigned
+        // CRITICAL FIX: Use orderItem._id (Subdocument ID) instead of orderItem.item (Product ID)
+        // to support distinct job numbers for multiple lines of the same product.
+        await Mapping.findOneAndUpdate(
+          { orderId: order._id, itemId: orderItem._id }, // Search by unique line item ID
+          {
+            assignedEmployeeId: employeeId,
+            jobNumber: jobNumber
+          },
+          { upsert: true, new: true }
+        );
+      }
     }
 
     await order.save();

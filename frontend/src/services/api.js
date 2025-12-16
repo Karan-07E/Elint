@@ -106,8 +106,9 @@ export const getOrderTree = (search = '') => api.get(`/orders/tree${search ? `?s
 export const searchOrders = (params = {}) => api.get('/orders', { params });
 
 // ✅ NEW: Missing functions added here
-export const assignOrder = (orderId, employeeId) => api.patch(`/orders/${orderId}/assign`, { employeeId });
+export const assignOrder = (orderId, data) => api.patch(`/orders/${orderId}/assign`, data);
 export const getMyOrders = () => api.get('/orders/my-orders');
+export const getMappings = () => api.get('/mappings');
 
 // --- Accounts Dashboard APIs ---
 export const getAccountsOrdersSummary = () => api.get('/accounts/orders/summary');
