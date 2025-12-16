@@ -14,6 +14,7 @@ const Party = require('../models/Party');
 const Item = require('../models/Item');
 const Mapping = require('../models/Mapping');
 const Counter = require('../models/Counter');
+const Employee = require('../models/Employee');
 
 // Middleware to allow admin or accounts team (copied from userRoutes)
 // Ensuring it's available for use in routes
@@ -156,7 +157,7 @@ router.get('/', authenticateToken, allowAccountsOrAdmin, async (req, res) => {
   }
 });
 
-// Get assigned orders formatted for Dashboard (Employee View)
+// Get assigned orders formatted for Dashboard (Employee View) - Fetching from Employee table
 router.get('/my-orders', authenticateToken, async (req, res) => {
   try {
     // JWT payload has userId, not id
@@ -168,15 +169,28 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
 
     const { status, priority, range } = req.query;
 
-    // Base filter: Find all non-deleted orders
+    // Find employee record
+    const employee = await Employee.findOne({ userId: currentUserId });
+    
+    if (!employee || !employee.ordersAssigned || employee.ordersAssigned.length === 0) {
+      return res.json({
+        total: 0,
+        page,
+        per_page: limit,
+        orders: []
+      });
+    }
+
+    // Get order IDs from employee's ordersAssigned
+    const orderIds = employee.ordersAssigned.map(o => o.orderId);
+
+    // Base filter: Find orders from employee's assignments
     const filter = {
+      _id: { $in: orderIds },
       status: { $ne: 'Deleted' }
     };
 
     if (status) filter.status = status;
-    // Priority now applies to items. Support filtering orders that contain
-    // items with a given priority value.
-    if (priority) filter['items.priority'] = priority;
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -186,28 +200,29 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       if (range === 'today') {
         const endOfDay = new Date(startOfDay);
         endOfDay.setDate(endOfDay.getDate() + 1);
-        filter.deadline = { $gte: startOfDay, $lt: endOfDay };
+        filter.estimatedDeliveryDate = { $gte: startOfDay, $lt: endOfDay };
       } else if (range === 'week') {
         const nextWeek = new Date(startOfDay);
         nextWeek.setDate(nextWeek.getDate() + 7);
-        filter.deadline = { $gte: startOfDay, $lte: nextWeek };
+        filter.estimatedDeliveryDate = { $gte: startOfDay, $lte: nextWeek };
       } else if (range === 'last30') {
-        // "Last 30 days" usually implies looking back at created orders
         const thirtyDaysAgo = new Date(startOfDay);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        filter.orderDate = { $gte: thirtyDaysAgo };
+        filter.poDate = { $gte: thirtyDaysAgo };
       }
     }
 
-    // 1. Fetch matching orders
+    // Fetch orders from employee's assigned orders
     const allMatches = await Order.find(filter)
       .populate('party', 'name')
-      .populate('items.item', 'name code')
+      .populate({
+        path: 'items.item',
+        select: 'name code type category processes hsn salePrice openingQty unit',
+        model: 'Item'
+      })
       .populate('items.assignedTo', 'name employeeId')
-      .populate('assignedAccountEmployee', 'name employeeId')
-      .limit(500);
+      .populate('assignedAccountEmployee', 'name employeeId');
 
-    // 2. Compute Overdue & Map
     const priorityWeight = { 'High': 3, 'Urgent': 3, 'Normal': 2, 'Low': 1 };
 
     const mappedOrders = allMatches.map(o => {
@@ -215,18 +230,27 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       const startDate = o.poDate ? new Date(o.poDate) : null;
       const isOverdue = deadline && deadline < now && o.status !== 'Completed';
 
-      // Filter items to only show those assigned to current employee
+      // Get items assigned to this employee from employee tracking
+      const employeeOrder = employee.ordersAssigned.find(eo => eo.orderId.toString() === o._id.toString());
+      const assignedItemIds = employeeOrder ? employeeOrder.items.map(i => i.itemId.toString()) : [];
+
+      // Filter items to only show those in employee's tracking
       const userItems = o.items.filter(item => {
-        if (!item.assignedTo) return false;
-        const assignedToId = item.assignedTo._id ? item.assignedTo._id.toString() : item.assignedTo.toString();
-        return assignedToId === currentUserId;
+        const itemId = item.item._id ? item.item._id.toString() : item.item.toString();
+        return assignedItemIds.includes(itemId);
       });
+
+      // Apply priority filter if specified
+      if (priority) {
+        const filteredByPriority = userItems.filter(item => item.priority === priority);
+        if (filteredByPriority.length === 0) return null; // Exclude this order
+      }
 
       // Calculate total for user's items only
       const userTotal = userItems.reduce((sum, item) => sum + (item.amount || 0), 0);
 
-      // Derive order-level priority from items (High if any item is High)
-      const derivedPriority = (userItems || []).some(it => (it.priority || '').toLowerCase() === 'high') ? 'High' : (o.priority || 'Normal');
+      // Derive order-level priority from items
+      const derivedPriority = userItems.some(it => (it.priority || '').toLowerCase() === 'high') ? 'High' : (o.priority || 'Normal');
 
       return {
         id: o._id,
@@ -244,19 +268,19 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
         _rawDeadline: deadline ? deadline.getTime() : Number.MAX_SAFE_INTEGER,
         _priorityVal: priorityWeight[derivedPriority] || 0
       };
-    });
+    }).filter(o => o !== null); // Remove orders filtered out by priority
 
-    // Filter out orders with no items assigned to this employee
+    // Filter out orders with no items
     const ordersWithItems = mappedOrders.filter(o => o.items.length > 0);
 
-    // 3. Sort: Overdue (desc) -> Priority (desc) -> Deadline (asc)
+    // Sort: Overdue (desc) -> Priority (desc) -> Deadline (asc)
     ordersWithItems.sort((a, b) => {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
       if (a._priorityVal !== b._priorityVal) return b._priorityVal - a._priorityVal;
       return a._rawDeadline - b._rawDeadline;
     });
 
-    // 4. Paginate
+    // Paginate
     const total = ordersWithItems.length;
     const paginatedOrders = ordersWithItems.slice(skip, skip + limit);
 
@@ -268,6 +292,55 @@ router.get('/my-orders', authenticateToken, async (req, res) => {
       page,
       per_page: limit,
       orders: finalOrders
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get employee progress - ALL orders (including completed)
+router.get('/employee/progress', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId || req.user.id;
+    
+    // Fetch ALL orders where employee has items assigned (including completed orders)
+    const allOrders = await Order.find({
+      status: { $ne: 'Deleted' },
+      'items.assignedTo': currentUserId
+    })
+      .populate('party', 'name')
+      .populate('items.item', 'name code')
+      .populate('items.assignedTo', 'name employeeId')
+      .populate('assignedAccountEmployee', 'name employeeId')
+      .sort({ poDate: -1 });
+
+    // Map orders with only user's items
+    const mappedOrders = allOrders.map(o => {
+      const userItems = o.items.filter(item => {
+        if (!item.assignedTo) return false;
+        const assignedToId = item.assignedTo._id ? item.assignedTo._id.toString() : item.assignedTo.toString();
+        return assignedToId === currentUserId;
+      });
+
+      const deadline = o.estimatedDeliveryDate ? new Date(o.estimatedDeliveryDate) : null;
+      const userTotal = userItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+
+      return {
+        id: o._id,
+        po_number: o.poNumber,
+        customer_name: o.party?.name || 'Unknown',
+        deadline: deadline,
+        amount: userTotal,
+        items: userItems,
+        status: o.status,
+        assignedTo: o.assignedAccountEmployee
+      };
+    }).filter(o => o.items.length > 0);
+
+    res.json({
+      total: mappedOrders.length,
+      orders: mappedOrders
     });
 
   } catch (error) {
@@ -545,6 +618,299 @@ router.patch('/:id/item-completion', authenticateToken, async (req, res) => {
 
     res.json({ message: 'Item completion status updated', item: order.items[itemIndex] });
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update substep completion status in employee tracking
+router.patch('/employee/substep-completion', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId || req.user.id;
+    const { orderId, itemId, stepId, subStepId } = req.body;
+
+    if (!orderId || !itemId || stepId === undefined || subStepId === undefined) {
+      return res.status(400).json({ message: 'orderId, itemId, stepId, and subStepId are required' });
+    }
+
+    // Find or create employee record
+    let employee = await Employee.findOne({ userId: currentUserId });
+    
+    if (!employee) {
+      // Get user details to create employee record
+      const User = require('../models/User');
+      const user = await User.findById(currentUserId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      employee = new Employee({
+        userId: currentUserId,
+        name: user.name,
+        empId: user.employeeId || `EMP${Date.now()}`,
+        ordersAssigned: []
+      });
+    }
+
+    // Find or create order tracking
+    let orderTracking = employee.ordersAssigned.find(o => o.orderId.toString() === orderId);
+    
+    if (!orderTracking) {
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+
+      orderTracking = {
+        orderId: orderId,
+        poNumber: order.poNumber,
+        status: 'in-progress',
+        assignedAt: new Date(),
+        items: []
+      };
+      employee.ordersAssigned.push(orderTracking);
+    } else {
+      if (orderTracking.status === 'assigned') {
+        orderTracking.status = 'in-progress';
+      }
+    }
+
+    // Find or create item tracking
+    let itemTracking = orderTracking.items.find(i => i.itemId.toString() === itemId);
+    
+    if (!itemTracking) {
+      const item = await Item.findById(itemId);
+      if (!item) {
+        return res.status(404).json({ message: 'Item not found' });
+      }
+
+      // Initialize item with all steps and substeps from the item schema
+      itemTracking = {
+        itemId: itemId,
+        itemName: item.name,
+        status: 'in-progress',
+        steps: item.processes.map(process => ({
+          stepId: process.id,
+          stepName: process.stepName,
+          status: 'pending',
+          subSteps: process.subSteps.map(sub => ({
+            subStepId: sub.id,
+            name: sub.name,
+            status: 'pending',
+            completedAt: null
+          }))
+        }))
+      };
+      orderTracking.items.push(itemTracking);
+    }
+
+    // Find the specific step and substep
+    const step = itemTracking.steps.find(s => s.stepId === stepId);
+    if (!step) {
+      return res.status(404).json({ message: 'Step not found' });
+    }
+
+    const subStep = step.subSteps.find(ss => ss.subStepId === subStepId);
+    if (!subStep) {
+      return res.status(404).json({ message: 'SubStep not found' });
+    }
+
+    // Update substep completion
+    subStep.status = 'completed';
+    subStep.completedAt = new Date();
+
+    // Check if all substeps in this step are completed
+    const allSubStepsCompleted = step.subSteps.every(ss => ss.status === 'completed');
+    if (allSubStepsCompleted) {
+      step.status = 'completed';
+      step.completedAt = new Date();
+    }
+
+    // Check if all steps in this item are completed
+    const allStepsCompleted = itemTracking.steps.every(s => s.status === 'completed');
+    if (allStepsCompleted) {
+      itemTracking.status = 'completed';
+      itemTracking.completedAt = new Date();
+      
+      // Also update the Order model's item completion status
+      const order = await Order.findById(orderId);
+      if (order) {
+        const orderItem = order.items.find(item => 
+          item.item && item.item.toString() === itemId
+        );
+        if (orderItem) {
+          orderItem.completed = true;
+          await order.save();
+        }
+      }
+    }
+
+    // Check if all items in this order are completed
+    const allItemsCompleted = orderTracking.items.every(i => i.status === 'completed');
+    if (allItemsCompleted) {
+      orderTracking.status = 'completed';
+      orderTracking.completedAt = new Date();
+      
+      // Also update the Order model status to 'Completed'
+      const order = await Order.findById(orderId);
+      if (order) {
+        order.status = 'Completed';
+        await order.save();
+      }
+    }
+
+    // Update statistics and save
+    employee.calculateStats();
+    employee.lastActiveAt = new Date();
+    await employee.save();
+
+    res.json({ 
+      message: 'SubStep completed successfully',
+      employee: employee,
+      cascadeInfo: {
+        subStepCompleted: true,
+        stepCompleted: allSubStepsCompleted,
+        itemCompleted: allStepsCompleted,
+        orderCompleted: allItemsCompleted
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating substep completion:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get employee tracking data
+router.get('/employee/tracking', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId || req.user.id;
+    
+    let employee = await Employee.findOne({ userId: currentUserId })
+      .populate('ordersAssigned.orderId', 'poNumber status estimatedDeliveryDate')
+      .populate('ordersAssigned.items.itemId', 'name code');
+
+    if (!employee) {
+      // Create empty employee record if doesn't exist
+      const User = require('../models/User');
+      const user = await User.findById(currentUserId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      employee = new Employee({
+        userId: currentUserId,
+        name: user.name,
+        empId: user.employeeId || `EMP${Date.now()}`,
+        ordersAssigned: []
+      });
+      await employee.save();
+    }
+
+    res.json({ employee });
+
+  } catch (error) {
+    console.error('Error fetching employee tracking:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Initialize employee tracking for a new order assignment
+router.post('/employee/initialize-order', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId || req.user.id;
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ message: 'orderId is required' });
+    }
+
+    // Find or create employee record
+    let employee = await Employee.findOne({ userId: currentUserId });
+    
+    if (!employee) {
+      const User = require('../models/User');
+      const user = await User.findById(currentUserId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      employee = new Employee({
+        userId: currentUserId,
+        name: user.name,
+        empId: user.employeeId || `EMP${Date.now()}`,
+        ordersAssigned: []
+      });
+    }
+
+    // Check if order already tracked
+    const existingOrder = employee.ordersAssigned.find(o => o.orderId.toString() === orderId);
+    if (existingOrder) {
+      return res.json({ message: 'Order already initialized', employee });
+    }
+
+    // Fetch order details
+    const order = await Order.findById(orderId)
+      .populate({
+        path: 'items.item',
+        select: 'name code processes',
+        model: 'Item'
+      });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Get only items assigned to this employee
+    const assignedItems = order.items.filter(item => {
+      if (!item.assignedTo) return false;
+      const assignedToId = item.assignedTo.toString();
+      return assignedToId === currentUserId;
+    });
+
+    if (assignedItems.length === 0) {
+      return res.status(400).json({ message: 'No items assigned to you in this order' });
+    }
+
+    // Create order tracking with all items, steps, and substeps
+    const orderTracking = {
+      orderId: orderId,
+      poNumber: order.poNumber,
+      status: 'assigned',
+      assignedAt: new Date(),
+      items: assignedItems.map(orderItem => {
+        const item = orderItem.item;
+        return {
+          itemId: item._id,
+          itemName: item.name,
+          quantity: orderItem.quantity,
+          unit: orderItem.unit,
+          status: 'pending',
+          steps: (item.processes || []).map(process => ({
+            stepId: process.id,
+            stepName: process.stepName,
+            status: 'pending',
+            subSteps: (process.subSteps || []).map(sub => ({
+              subStepId: sub.id,
+              name: sub.name,
+              status: 'pending',
+              completedAt: null
+            }))
+          }))
+        };
+      })
+    };
+
+    employee.ordersAssigned.push(orderTracking);
+    employee.lastActiveAt = new Date();
+    await employee.save();
+
+    res.json({ 
+      message: 'Order initialized successfully',
+      employee: employee
+    });
+
+  } catch (error) {
+    console.error('Error initializing order:', error);
     res.status(500).json({ message: error.message });
   }
 });

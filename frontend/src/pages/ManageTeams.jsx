@@ -228,8 +228,6 @@ export default function ManageTeams() {
         return "Employee";
       case "admin":
         return "Admin";
-      case "user":
-        return "User";
       default:
         return role;
     }

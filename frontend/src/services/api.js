@@ -109,6 +109,7 @@ export const searchOrders = (params = {}) => api.get('/orders', { params });
 export const assignOrder = (orderId, data) => api.patch(`/orders/${orderId}/assign`, data);
 export const getMyOrders = () => api.get('/orders/my-orders');
 export const getMappings = () => api.get('/mappings');
+export const getEmployeeProgress = () => api.get('/orders/employee/progress');
 
 // --- Accounts Dashboard APIs ---
 export const getAccountsOrdersSummary = () => api.get('/accounts/orders/summary');
