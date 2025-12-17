@@ -13,6 +13,12 @@ function EmployeeProgress() {
     total: 0
   });
 
+  const [itemStats, setItemStats] = useState({
+    completed: 0,
+    incomplete: 0,
+    total: 0
+  });
+
   useEffect(() => {
     fetchProgressData();
   }, []);
@@ -24,7 +30,7 @@ function EmployeeProgress() {
       const ordersData = response.data.orders || [];
       setOrders(ordersData);
 
-      // Calculate statistics
+      // Calculate order statistics
       const completed = ordersData.filter(order => 
         order.items.every(item => item.completed === true)
       ).length;
@@ -36,6 +42,25 @@ function EmployeeProgress() {
         total: ordersData.length
       });
 
+      // Calculate item statistics
+      let totalItems = 0;
+      let completedItems = 0;
+
+      ordersData.forEach(order => {
+        order.items.forEach(item => {
+          totalItems++;
+          if (item.completed === true) {
+            completedItems++;
+          }
+        });
+      });
+
+      setItemStats({
+        completed: completedItems,
+        incomplete: totalItems - completedItems,
+        total: totalItems
+      });
+
       setError('');
     } catch (err) {
       console.error('Error fetching progress data:', err);
@@ -45,9 +70,14 @@ function EmployeeProgress() {
     }
   };
 
-  const chartData = [
+  const orderChartData = [
     { name: 'Completed', value: stats.completed, color: '#10b981' },
     { name: 'Incomplete', value: stats.incomplete, color: '#f59e0b' }
+  ];
+
+  const itemChartData = [
+    { name: 'Completed', value: itemStats.completed, color: '#10b981' },
+    { name: 'Incomplete', value: itemStats.incomplete, color: '#f59e0b' }
   ];
 
   const COLORS = {
@@ -112,19 +142,20 @@ function EmployeeProgress() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No Orders Yet</h3>
-                <p className="text-gray-500">You don't have any orders assigned to you at the moment.</p>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No Orders History</h3>
+                <p className="text-gray-500">You haven't been assigned any orders yet.</p>
               </div>
             </div>
           ) : (
             <div className="space-y-6">
               {/* Statistics Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-500 font-medium">Total Orders</p>
                       <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+                      <p className="text-xs text-gray-400 mt-1">{stats.completed} completed</p>
                     </div>
                     <div className="bg-blue-100 rounded-full p-4">
                       <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,8 +168,26 @@ function EmployeeProgress() {
                 <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-500 font-medium">Completed</p>
-                      <p className="text-3xl font-bold text-green-600 mt-2">{stats.completed}</p>
+                      <p className="text-sm text-gray-500 font-medium">Total Items</p>
+                      <p className="text-3xl font-bold text-gray-900 mt-2">{itemStats.total}</p>
+                      <p className="text-xs text-gray-400 mt-1">{itemStats.completed} completed</p>
+                    </div>
+                    <div className="bg-purple-100 rounded-full p-4">
+                      <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500 font-medium">Completed Items</p>
+                      <p className="text-3xl font-bold text-green-600 mt-2">{itemStats.completed}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {itemStats.total > 0 ? Math.round((itemStats.completed / itemStats.total) * 100) : 0}% done
+                      </p>
                     </div>
                     <div className="bg-green-100 rounded-full p-4">
                       <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,8 +200,11 @@ function EmployeeProgress() {
                 <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-500 font-medium">Incomplete</p>
-                      <p className="text-3xl font-bold text-amber-600 mt-2">{stats.incomplete}</p>
+                      <p className="text-sm text-gray-500 font-medium">Pending Items</p>
+                      <p className="text-3xl font-bold text-amber-600 mt-2">{itemStats.incomplete}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {itemStats.total > 0 ? Math.round((itemStats.incomplete / itemStats.total) * 100) : 0}% remaining
+                      </p>
                     </div>
                     <div className="bg-amber-100 rounded-full p-4">
                       <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,46 +215,97 @@ function EmployeeProgress() {
                 </div>
               </div>
 
-              {/* Pie Chart Section */}
+              {/* Pie Charts Section */}
               <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Order Completion Overview</h2>
+                <h2 className="text-xl font-bold text-gray-900 mb-6">Completion Overview</h2>
                 
-                <div className="flex flex-col items-center">
-                  <ResponsiveContainer width="100%" height={400}>
-                    <PieChart>
-                      <Pie
-                        data={chartData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={renderCustomLabel}
-                        outerRadius={150}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[entry.name]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                      <Legend 
-                        verticalAlign="bottom" 
-                        height={36}
-                        formatter={(value, entry) => (
-                          <span className="font-medium text-gray-700">
-                            {value}: {entry.payload.value} orders
-                          </span>
-                        )}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Orders Pie Chart */}
+                  <div className="flex flex-col items-center">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Orders Progress</h3>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <PieChart>
+                        <Pie
+                          data={orderChartData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={renderCustomLabel}
+                          outerRadius={120}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {orderChartData.map((entry, index) => (
+                            <Cell key={`cell-orders-${index}`} fill={COLORS[entry.name]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend 
+                          verticalAlign="bottom" 
+                          height={36}
+                          formatter={(value, entry) => (
+                            <span className="font-medium text-gray-700">
+                              {value}: {entry.payload.value}
+                            </span>
+                          )}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
 
-                  {/* Completion Percentage */}
-                  <div className="mt-6 text-center">
-                    <p className="text-sm text-gray-500 font-medium">Overall Completion Rate</p>
-                    <p className="text-4xl font-bold text-blue-600 mt-2">
-                      {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
-                    </p>
+                    {/* Orders Completion Percentage */}
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-gray-500 font-medium">Orders Completion Rate</p>
+                      <p className="text-3xl font-bold text-blue-600 mt-2">
+                        {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {stats.completed} of {stats.total} orders completed
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Items Pie Chart */}
+                  <div className="flex flex-col items-center">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Items Progress</h3>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <PieChart>
+                        <Pie
+                          data={itemChartData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={renderCustomLabel}
+                          outerRadius={120}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {itemChartData.map((entry, index) => (
+                            <Cell key={`cell-items-${index}`} fill={COLORS[entry.name]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend 
+                          verticalAlign="bottom" 
+                          height={36}
+                          formatter={(value, entry) => (
+                            <span className="font-medium text-gray-700">
+                              {value}: {entry.payload.value}
+                            </span>
+                          )}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+
+                    {/* Items Completion Percentage */}
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-gray-500 font-medium">Items Completion Rate</p>
+                      <p className="text-3xl font-bold text-green-600 mt-2">
+                        {itemStats.total > 0 ? Math.round((itemStats.completed / itemStats.total) * 100) : 0}%
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {itemStats.completed} of {itemStats.total} items completed
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

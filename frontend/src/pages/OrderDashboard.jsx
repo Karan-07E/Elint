@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import ReportGenerator from '../components/ReportGenerator';
 import { getOrderFlowStats, getOrderTree, updateOrderStatus } from '../services/api';
-import { FaChevronRight, FaChevronDown, FaBoxOpen, FaCheckCircle, FaIndustry, FaFileAlt, FaTruck, FaPlus, FaTimes, FaStickyNote, FaHistory } from 'react-icons/fa';
+import { FaChevronRight, FaChevronDown, FaBoxOpen, FaCheckCircle, FaIndustry, FaFileAlt, FaTruck, FaPlus, FaTimes, FaStickyNote, FaHistory, FaFileInvoice } from 'react-icons/fa';
 import { MdVerified } from 'react-icons/md';
 import { canCreate } from '../utils/permissions';
 
@@ -16,7 +17,11 @@ const OrderDashboard = () => {
   const [selectedStage, setSelectedStage] = useState(null);
   
   // ✅ NEW: State to toggle note history view
-  const [expandedNotes, setExpandedNotes] = useState({}); 
+  const [expandedNotes, setExpandedNotes] = useState({});
+  
+  // Report Generator States
+  const [showReportGenerator, setShowReportGenerator] = useState(false);
+  const [selectedOrderForReport, setSelectedOrderForReport] = useState(null); 
 
   const flowStages = [
     { key: 'New', label: 'New Orders', icon: <FaBoxOpen />, color: 'bg-blue-100 text-blue-600', border: 'border-blue-200' },
@@ -54,6 +59,24 @@ const OrderDashboard = () => {
     setExpandedCustomers(prev => ({ ...prev, [customerId]: !prev[customerId] }));
   };
 
+
+  // Handle opening report generator
+  const handleGenerateReport = (order) => {
+    setSelectedOrderForReport(order);
+    setShowReportGenerator(true);
+  };
+
+  // Handle closing report generator
+  const handleCloseReportGenerator = () => {
+    setShowReportGenerator(false);
+    setSelectedOrderForReport(null);
+  };
+
+  // Handle report saved
+  const handleReportSaved = (report) => {
+    console.log('Report saved:', report);
+    // Optionally refresh data or show notification
+  };
   // ✅ Toggle Visibility of Notes for specific order
   const toggleNotes = (orderId) => {
     setExpandedNotes(prev => ({ ...prev, [orderId]: !prev[orderId] }));
@@ -228,6 +251,17 @@ const OrderDashboard = () => {
                                 <FaStickyNote /> Notes
                               </button>
 
+                              {/* ✅ GENERATE REPORT BUTTON - Only show in Documentation stage */}
+                              {order.status === 'Documentation' && (
+                                <button 
+                                  onClick={() => handleGenerateReport(order)}
+                                  className="text-xs flex items-center gap-1 px-2 py-1 rounded border bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 transition-colors"
+                                  title="Generate Report"
+                                >
+                                  <FaFileInvoice /> Generate
+                                </button>
+                              )}
+
                               {/* Show a high-priority badge if any item in the order is High priority */}
                               {(order.items || []).some(it => it.priority === 'High') && (
                                 <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded flex items-center gap-1 animate-pulse">
@@ -300,6 +334,15 @@ const OrderDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Report Generator Modal */}
+      {showReportGenerator && selectedOrderForReport && (
+        <ReportGenerator
+          order={selectedOrderForReport}
+          onClose={handleCloseReportGenerator}
+          onSave={handleReportSaved}
+        />
+      )}
     </div>
   );
 };

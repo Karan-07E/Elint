@@ -103,6 +103,8 @@ const orderRoutes = require('./routes/orderRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes = require('./routes/userRoutes');
 const exportRoutes = require('./routes/exportRoutes');
+const employeeRoutes = require('./routes/employeeRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
@@ -116,6 +118,8 @@ app.use('/api/accounts', require('./routes/accountsRoutes'));
 app.use('/api/users', userRoutes);
 app.use('/api/mappings', require('./routes/mappingRoutes'));
 app.use('/api/export', exportRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Kick off connection + server start
 checkAndConnect();

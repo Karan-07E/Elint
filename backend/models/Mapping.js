@@ -21,17 +21,48 @@ const mappingSchema = new mongoose.Schema({
     assignedEmployeeId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
-    },
+        required: true,
+        index: true
+    }, 
 
     // Format: EJB-00001 (must support existing job number system)
     jobNumber: {
         type: String,
         required: true,
         trim: true
+    },
+
+    // Work tracking fields
+    status: {
+        type: String,
+        enum: ['pending', 'in-progress', 'completed'],
+        default: 'pending'
+    },
+
+    progressPercentage: {
+        type: Number,
+        min: 0,
+        max: 100,
+        default: 0
+    },
+
+    startedAt: {
+        type: Date
+    },
+
+    completedAt: {
+        type: Date
+    },
+
+    notes: {
+        type: String,
+        trim: true
     }
 }, {
     timestamps: true
 });
+
+// Index for employee queries
+mappingSchema.index({ assignedEmployeeId: 1, status: 1 });
 
 module.exports = mongoose.model('Mapping', mappingSchema);
