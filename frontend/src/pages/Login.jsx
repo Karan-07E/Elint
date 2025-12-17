@@ -5,8 +5,7 @@ import {
   LuLock, 
   LuEye, 
   LuEyeOff, 
-  LuArrowRight, 
-  LuHexagon // Imported for the logo
+  LuArrowRight,
 } from "react-icons/lu";
 
 const Login = () => {
@@ -78,21 +77,15 @@ const Login = () => {
 
         <div className="z-10 text-center flex flex-col items-center">
           
-          {/* LOGO: SVG with Radial Gradient Palette */}
+          {/* LOGO: Use uploaded Elints image */}
           <div className="w-24 h-24 mb-8 relative flex items-center justify-center">
-            {/* Outer Glow */}
-            <div className="absolute inset-0 bg-blue-500 rounded-3xl blur-xl opacity-40"></div>
-            
-            {/* Main Logo Container with Radial Gradient */}
-            <div className="relative w-full h-full rounded-2xl shadow-2xl flex items-center justify-center bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-400 via-blue-600 to-slate-900 border border-white/10">
-              
-              {/* Inner Shine */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-white/20 to-transparent opacity-50"></div>
-              
-              {/* SVG Icon */}
-              <LuHexagon 
-                className="text-white w-12 h-12 relative z-10 drop-shadow-md" 
-                strokeWidth={2} 
+            <div className="absolute inset-0 bg-blue-500 rounded-3xl blur-xl opacity-20"></div>
+            <div className="relative w-full h-full rounded-2xl shadow-2xl flex items-center justify-center bg-slate-900 border border-white/10 overflow-hidden">
+              <img
+                src={process.env.PUBLIC_URL + '/elintslogo.png'}
+                alt="Elints"
+                className="w-20 h-20 object-contain relative z-10"
+                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = process.env.PUBLIC_URL + '/logo192.png'; }}
               />
             </div>
           </div>

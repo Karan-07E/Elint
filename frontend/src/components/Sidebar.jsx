@@ -17,8 +17,7 @@ import {
   LuChevronRight,
   LuChevronDown,
   LuUsers,
-  LuCalendarDays,
-  LuHexagon // Professional Logo Icon
+  LuCalendarDays
 } from "react-icons/lu";
 import { hasPermission } from '../utils/permissions';
 
@@ -318,10 +317,15 @@ const Sidebar = () => {
       {/* Header */}
       <div className="p-5 border-b border-slate-800 bg-slate-900">
         <div className="flex items-center gap-3 mb-5 px-1">
-          {/* Logo Placeholder */}
-          <div className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500 via-blue-600 to-slate-800 border border-white/10 relative overflow-hidden group">
+          {/* Logo Image */}
+          <div className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center border border-white/10 relative overflow-hidden group bg-slate-800">
             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            <LuHexagon className="text-white w-6 h-6 drop-shadow-md" strokeWidth={2.5} />
+            <img
+              src={process.env.PUBLIC_URL + '/elintslogo.png'}
+              alt="Elints"
+              className="w-9 h-9 object-contain rounded-md relative z-10"
+              onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = process.env.PUBLIC_URL + '/logo192.png'; }}
+            />
           </div>
           <span className="text-lg font-bold text-white tracking-tight">Elints ERP</span>
         </div>
