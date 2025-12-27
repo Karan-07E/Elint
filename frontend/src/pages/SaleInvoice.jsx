@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
-import { getAllParties, getAllItems, createSale } from '../services/api';
+import { getAllParties, getAllItems, createSale, getNextSaleInvoice } from '../services/api';
 import { BiGridVertical } from 'react-icons/bi';
 import { FaTrashAlt } from 'react-icons/fa';
 import { canCreate } from '../utils/permissions';
@@ -24,10 +24,23 @@ const createNewItemRow = () => ({
 
 const SaleInvoice = () => {
   const navigate = useNavigate();
+  const inputClass = 'w-full border-gray-300 rounded-md shadow-sm text-sm h-10 px-3 py-2';
   const [saleType, setSaleType] = useState('sale'); // 'sale', 'credit', 'cash'
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedParty, setSelectedParty] = useState(null);
+  const [partyInput, setPartyInput] = useState('');
+  
+  const getUserRole = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      return user?.role || 'user';
+    } catch {
+      return 'user';
+    }
+  };
+  
+  const userRole = getUserRole();
   
   // Form State
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -37,6 +50,15 @@ const SaleInvoice = () => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState(''); // Base64 string
+  const [customPaymentTypes, setCustomPaymentTypes] = useState([]);
+  const [showPaymentInput, setShowPaymentInput] = useState(false);
+  const [newPaymentType, setNewPaymentType] = useState('');
+
+  // Extra sale-specific fields
+  const [salesperson, setSalesperson] = useState('');
+  const [referencePO, setReferencePO] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [shippingMethod, setShippingMethod] = useState('');
   
   // Summary State
   const [roundOff, setRoundOff] = useState(true);
@@ -45,6 +67,7 @@ const SaleInvoice = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
 
   // Fetch initial data for dropdowns
   useEffect(() => {
@@ -55,6 +78,11 @@ const SaleInvoice = () => {
         
         const itemsRes = await getAllItems();
         setItems(itemsRes.data || []);
+        // Pre-fill partyInput if a single default exists
+        if ((partiesRes.data || []).length === 1) {
+          setPartyInput(partiesRes.data[0].name);
+          setSelectedParty(partiesRes.data[0]);
+        }
       } catch (err) {
         setError('Failed to load parties or items.');
       }
@@ -66,6 +94,30 @@ const SaleInvoice = () => {
   const handlePartyChange = (partyId) => {
     const party = parties.find(p => p._id === partyId);
     setSelectedParty(party || null);
+    setPartyInput(party ? party.name : '');
+  };
+
+  const handlePartyInputChange = (value) => {
+    setPartyInput(value);
+    const party = parties.find(p => p.name === value);
+    setSelectedParty(party || null);
+  };
+
+  // Image upload helper
+  const handleImageFile = async (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImage(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const addCustomPaymentType = () => {
+    const v = newPaymentType.trim();
+    if (!v) return;
+    setCustomPaymentTypes(prev => Array.from(new Set([...prev, v])));
+    setPaymentType(v);
+    setNewPaymentType('');
+    setShowPaymentInput(false);
   };
 
   // Handle changes within an item row
@@ -77,7 +129,7 @@ const SaleInvoice = () => {
 
     // When an item is selected from the dropdown
     if (field === 'item') {
-      const selectedItem = items.find(i => i._id === value);
+      const selectedItem = items.find(i => i._id === value || i.name === value);
       if (selectedItem) {
         row.item = selectedItem;
         row.unit = selectedItem.unit || 'NONE';
@@ -199,7 +251,13 @@ const SaleInvoice = () => {
 
   // Handle Save
   const handleSubmit = async () => {
-    if (!selectedParty) {
+    // Try fuzzy match if user typed a name
+    let partyToUse = selectedParty;
+    if (!partyToUse && partyInput) {
+      const found = parties.find(p => p.name.toLowerCase().includes(partyInput.toLowerCase()));
+      if (found) partyToUse = found;
+    }
+    if (!partyToUse) {
       setError('Please select a customer.');
       return;
     }
@@ -210,10 +268,14 @@ const SaleInvoice = () => {
 
     try {
       const saleData = {
-        party: selectedParty._id,
+        party: partyToUse._id,
         invoiceNumber,
         invoiceDate,
         stateOfSupply,
+        salesperson,
+        referencePO,
+        paymentTerms,
+        shippingMethod,
         items: calculations.calculatedRows.map(row => ({
           item: row.item._id,
           description: row.description,
@@ -243,11 +305,71 @@ const SaleInvoice = () => {
         }]
       };
 
-      await createSale(saleData);
+      const res = await createSale(saleData);
       setMessage('Sale created successfully!');
       // Reset form or navigate away
       navigate('/sales'); // Assuming you'll add a sales list page
       
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.message || 'Failed to create sale.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveAndReport = async () => {
+    // Fuzzy party match
+    let partyToUse = selectedParty;
+    if (!partyToUse && partyInput) {
+      const found = parties.find(p => p.name.toLowerCase().includes(partyInput.toLowerCase()));
+      if (found) partyToUse = found;
+    }
+    if (!partyToUse) {
+      setError('Please select a customer.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const saleData = {
+        party: partyToUse._id,
+        invoiceNumber,
+        invoiceDate,
+        stateOfSupply,
+        salesperson,
+        referencePO,
+        paymentTerms,
+        shippingMethod,
+        items: calculations.calculatedRows.map(row => ({
+          item: row.item._id,
+          description: row.description,
+          quantity: row.quantity,
+          unit: row.unit,
+          rate: row.rate,
+          discountType: row.discountType,
+          discountValue: row.discountValue,
+          discountAmount: row.discountAmount,
+          taxableAmount: parseFloat(row.amount) - parseFloat(row.taxAmount),
+          taxRate: row.taxRate,
+          taxAmount: row.taxAmount,
+          amount: row.amount,
+        })),
+        subtotal: calculations.subtotal,
+        taxAmount: calculations.totalTax,
+        roundOff: calculations.roundOffValue,
+        totalAmount: calculations.finalTotal,
+        paidAmount: calculations.finalReceived,
+        balanceAmount: calculations.balance,
+        paymentStatus: calculations.balance == 0 ? 'paid' : (calculations.finalReceived > 0 ? 'partial' : 'unpaid'),
+        notes: description,
+        image: image || null,
+        paymentDetails: [{ paymentMode: paymentType.toLowerCase(), amount: calculations.finalReceived }]
+      };
+
+      const res = await createSale(saleData);
+      const saleId = res.data._id;
+      navigate(`/sales/report/${saleId}`);
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.message || 'Failed to create sale.');
@@ -305,16 +427,18 @@ const SaleInvoice = () => {
               {/* Customer */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Customer *</label>
-                <select
-                  value={selectedParty?._id || ''}
-                  onChange={(e) => handlePartyChange(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                >
-                  <option value="" disabled>Select Customer</option>
+                <input
+                  list="partiesList"
+                  value={partyInput}
+                  onChange={(e) => handlePartyInputChange(e.target.value)}
+                  className={inputClass}
+                  placeholder="Type or select customer"
+                />
+                <datalist id="partiesList">
                   {parties.map(party => (
-                    <option key={party._id} value={party._id}>{party.name}</option>
+                    <option key={party._id} value={party.name} />
                   ))}
-                </select>
+                </datalist>
                 {selectedParty && (
                   <div className="mt-1 text-xs text-slate-500">
                     Bal: {selectedParty.currentBalance} ({selectedParty.balanceType})
@@ -336,12 +460,44 @@ const SaleInvoice = () => {
               {/* Invoice # */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Invoice Number</label>
-                <input
-                  type="text"
-                  value={invoiceNumber}
-                  onChange={e => setInvoiceNumber(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={e => setInvoiceNumber(e.target.value)}
+                    className={inputClass}
+                    placeholder="Enter or generate invoice #"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setGeneratingInvoice(true);
+                      setError(null);
+                      try {
+                        const res = await getNextSaleInvoice();
+                        console.debug('Next invoice response:', res);
+                        if (res && res.data && res.data.invoice) {
+                          setInvoiceNumber(res.data.invoice);
+                          setMessage('Invoice generated');
+                        } else {
+                          console.warn('Unexpected next-invoice response shape', res);
+                          setError('Unexpected response from server when generating invoice');
+                        }
+                      } catch (err) {
+                        console.error('Failed to generate invoice', err);
+                        const serverMsg = err?.response?.data?.message;
+                        const status = err?.response?.status;
+                        setError(serverMsg || err.message || `Failed to generate invoice${status ? ' (status ' + status + ')' : ''}`);
+                      } finally {
+                        setGeneratingInvoice(false);
+                      }
+                    }}
+                    disabled={generatingInvoice}
+                    className="px-3 py-1 bg-gray-100 border rounded-md text-sm disabled:opacity-50"
+                  >
+                    {generatingInvoice ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
               </div>
 
               {/* Billing Address */}
@@ -351,7 +507,7 @@ const SaleInvoice = () => {
                   value={selectedParty?.billingAddress?.street || ''}
                   readOnly
                   rows="3"
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm bg-gray-100"
+                  className={inputClass + ' bg-gray-100'}
                 />
               </div>
 
@@ -362,6 +518,47 @@ const SaleInvoice = () => {
                   type="date"
                   value={invoiceDate}
                   onChange={e => setInvoiceDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              {/* Salesperson */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Salesperson</label>
+                <input
+                  type="text"
+                  value={salesperson}
+                  onChange={e => setSalesperson(e.target.value)}
+                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                />
+              </div>
+              {/* Reference PO */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Reference PO</label>
+                <input
+                  type="text"
+                  value={referencePO}
+                  onChange={e => setReferencePO(e.target.value)}
+                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                />
+              </div>
+              {/* Payment Terms */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Payment Terms</label>
+                <input
+                  type="text"
+                  value={paymentTerms}
+                  onChange={e => setPaymentTerms(e.target.value)}
+                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                  placeholder="e.g., Net 30"
+                />
+              </div>
+              {/* Shipping Method */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Shipping Method</label>
+                <input
+                  type="text"
+                  value={shippingMethod}
+                  onChange={e => setShippingMethod(e.target.value)}
                   className="w-full border-gray-300 rounded-md shadow-sm text-sm"
                 />
               </div>
@@ -372,7 +569,7 @@ const SaleInvoice = () => {
                 <select
                   value={stateOfSupply}
                   onChange={e => setStateOfSupply(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                  className={inputClass}
                 >
                   <option value="">Select State</option>
                   <option value="Karnataka">Karnataka</option>
@@ -392,13 +589,12 @@ const SaleInvoice = () => {
                   <th className="p-3 text-left w-6"></th>
                   <th className="p-3 text-left w-8">#</th>
                   <th className="p-3 text-left w-1/4">Item</th>
-                  <th className="p-3 text-left w-1/6">Colour</th>
                   <th className="p-3 text-left">Qty</th>
                   <th className="p-3 text-left">Unit</th>
-                  <th className="p-3 text-left">Price/Unit</th>
-                  <th className="p-3 text-left" colSpan="2">Discount</th>
+                  {userRole !== 'employee' && <th className="p-3 text-left">Price/Unit</th>}
+                  {userRole !== 'employee' && <th className="p-3 text-left" colSpan="2">Discount</th>}
                   <th className="p-3 text-left" colSpan="2">Tax</th>
-                  <th className="p-3 text-left">Amount</th>
+                  {userRole !== 'employee' && <th className="p-3 text-left">Amount</th>}
                   <th className="p-3 text-left w-10"></th>
                 </tr>
               </thead>
@@ -410,27 +606,21 @@ const SaleInvoice = () => {
                     
                     {/* Item */}
                     <td className="p-3">
-                      <select
-                        value={row.item?._id || ''}
+                      <input
+                        list="itemsList"
+                        value={row.item?.name || ''}
                         onChange={e => handleItemRowChange(index, 'item', e.target.value)}
                         className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                      >
-                        <option value="" disabled>Select Item</option>
+                        placeholder="Type or select item"
+                      />
+                      <datalist id="itemsList">
                         {items.map(item => (
-                          <option key={item._id} value={item._id}>{item.name}</option>
+                          <option key={item._id} value={item.name} />
                         ))}
-                      </select>
+                      </datalist>
                     </td>
                     
-                    {/* Colour/Description */}
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={row.description}
-                        onChange={e => handleItemRowChange(index, 'description', e.target.value)}
-                        className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                      />
-                    </td>
+                    {/* Description (column removed per UX) */}
                     
                     {/* Qty */}
                     <td className="p-3">
@@ -450,45 +640,51 @@ const SaleInvoice = () => {
                     </td>
                     
                     {/* Price/Unit */}
-                    <td className="p-3">
-                      <div className="flex flex-col">
-                        <input
-                          type="number"
-                          value={row.rate}
-                          onChange={e => handleItemRowChange(index, 'rate', e.target.value)}
-                          className="w-24 border-gray-300 rounded-md shadow-sm text-sm"
-                        />
-                        <select 
-                          value={row.rateIncludesTax}
-                          onChange={e => handleItemRowChange(index, 'rateIncludesTax', e.target.value === 'true')}
-                          className="mt-1 w-24 border-0 p-0 pl-1 text-xs"
-                        >
-                          <option value={false}>Without Tax</option>
-                          <option value={true}>With Tax</option>
-                        </select>
-                      </div>
-                    </td>
+                    {userRole !== 'employee' && (
+                      <td className="p-3">
+                        <div className="flex flex-col">
+                          <input
+                            type="number"
+                            value={row.rate}
+                            onChange={e => handleItemRowChange(index, 'rate', e.target.value)}
+                            className="w-24 border-gray-300 rounded-md shadow-sm text-sm"
+                          />
+                          <select 
+                            value={row.rateIncludesTax}
+                            onChange={e => handleItemRowChange(index, 'rateIncludesTax', e.target.value === 'true')}
+                            className="mt-1 w-24 border-0 p-0 pl-1 text-xs"
+                          >
+                            <option value={false}>Without Tax</option>
+                            <option value={true}>With Tax</option>
+                          </select>
+                        </div>
+                      </td>
+                    )}
 
                     {/* Discount */}
-                    <td className="p-3">
-                      <input
-                        type="number"
-                        value={row.discountValue}
-                        onChange={e => handleItemRowChange(index, 'discountValue', e.target.value)}
-                        className="w-16 border-gray-300 rounded-md shadow-sm text-sm"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <select
-                        value={row.discountType}
-                        onChange={e => handleItemRowChange(index, 'discountType', e.target.value)}
-                        className="w-20 border-gray-300 rounded-md shadow-sm text-sm"
-                      >
-                        <option value="percentage">%</option>
-                        <option value="flat">Amt</option>
-                      </select>
-                      <div className="text-xs text-slate-500">({row.discountAmount})</div>
-                    </td>
+                    {userRole !== 'employee' && (
+                      <>
+                        <td className="p-3">
+                          <input
+                            type="number"
+                            value={row.discountValue}
+                            onChange={e => handleItemRowChange(index, 'discountValue', e.target.value)}
+                            className="w-16 border-gray-300 rounded-md shadow-sm text-sm"
+                          />
+                        </td>
+                        <td className="p-3">
+                          <select
+                            value={row.discountType}
+                            onChange={e => handleItemRowChange(index, 'discountType', e.target.value)}
+                            className="w-20 border-gray-300 rounded-md shadow-sm text-sm"
+                          >
+                            <option value="percentage">%</option>
+                            <option value="flat">Amt</option>
+                          </select>
+                          <div className="text-xs text-slate-500">({row.discountAmount})</div>
+                        </td>
+                      </>
+                    )}
                     
                     {/* Tax */}
                     <td className="p-3">
@@ -509,9 +705,11 @@ const SaleInvoice = () => {
                     </td>
 
                     {/* Amount */}
-                    <td className="p-3 font-medium text-slate-800">
-                      {row.amount}
-                    </td>
+                    {userRole !== 'employee' && (
+                      <td className="p-3 font-medium text-slate-800">
+                        {row.amount}
+                      </td>
+                    )}
                     
                     {/* Delete Row */}
                     <td className="p-3">
@@ -539,23 +737,36 @@ const SaleInvoice = () => {
           <div className="p-6 bg-gray-50 border-t border-gray-200 grid grid-cols-2 gap-8">
             {/* Left Panel */}
             <div>
-              <div className="mb-4">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Payment Type</label>
-                <select
-                  value={paymentType}
-                  onChange={e => setPaymentType(e.target.value)}
-                  className="w-1/2 border-gray-300 rounded-md shadow-sm text-sm"
-                >
-                  <option>Cash</option>
-                  <option>Bank</option>
-                  <option>Cheque</option>
-                  <option>UPI</option>
-                  <option>Card</option>
-                </select>
-              </div>
+              {/* Payment Type (single control with ability to add custom types) */}
               
               <div className="space-y-3 text-sm">
-                <a href="#" className="text-blue-600 font-medium">+ Add Payment type</a>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Payment Type</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={paymentType}
+                      onChange={e => setPaymentType(e.target.value)}
+                      className={inputClass + ' w-1/2'}
+                    >
+                      <option>Cash</option>
+                      <option>Bank</option>
+                      <option>Cheque</option>
+                      <option>UPI</option>
+                      <option>Card</option>
+                      {customPaymentTypes.map((p, i) => (
+                        <option key={i}>{p}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => setShowPaymentInput(!showPaymentInput)} className="text-blue-600">+ Add</button>
+                  </div>
+                  {showPaymentInput && (
+                    <div className="mt-2 flex gap-2">
+                      <input value={newPaymentType} onChange={e => setNewPaymentType(e.target.value)} className="border rounded-md px-2" />
+                      <button onClick={addCustomPaymentType} className="px-2 py-1 bg-blue-600 text-white rounded-md">Add</button>
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                   <textarea
@@ -565,59 +776,71 @@ const SaleInvoice = () => {
                     className="w-full border-gray-300 rounded-md shadow-sm text-sm"
                   ></textarea>
                 </div>
-                <a href="#" className="text-blue-600 font-medium">+ Add Image</a>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Image</label>
+                  <div className="flex items-center gap-2">
+                    <input type="file" accept="image/*" id="sale-image-input" style={{ display: 'none' }} onChange={e => handleImageFile(e.target.files[0])} />
+                    <button onClick={() => document.getElementById('sale-image-input').click()} className="text-blue-600">+ Add Image</button>
+                    {image && (
+                      <img src={image} alt="preview" style={{ height: 40 }} />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Right Panel: Summary Box */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-600">Subtotal</span>
-                <span className="text-sm font-medium text-slate-800">{calculations.subtotal}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-600">Total Tax</span>
-                <span className="text-sm font-medium text-slate-800">{calculations.totalTax}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <input
-                    type="checkbox"
-                    id="roundOff"
-                    checked={roundOff}
-                    onChange={e => setRoundOff(e.target.checked)}
-                    className="mr-2 rounded text-blue-600"
-                  />
-                  <label htmlFor="roundOff" className="text-sm text-slate-600">Round Off</label>
+            {userRole !== 'employee' && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Subtotal</span>
+                  <span className="text-sm font-medium text-slate-800">{calculations.subtotal}</span>
                 </div>
-                <span className="text-sm font-medium text-slate-800">{calculations.roundOffValue}</span>
-              </div>
-              
-              <hr />
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Total Tax</span>
+                  <span className="text-sm font-medium text-slate-800">{calculations.totalTax}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <input
+                      type="checkbox"
+                      id="roundOff"
+                      checked={roundOff}
+                      onChange={e => setRoundOff(e.target.checked)}
+                      className="mr-2 rounded text-blue-600"
+                    />
+                    <label htmlFor="roundOff" className="text-sm text-slate-600">Round Off</label>
+                  </div>
+                  <span className="text-sm font-medium text-slate-800">{calculations.roundOffValue}</span>
+                </div>
+                
+                <hr />
 
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-slate-800">Total</span>
-                <span className="text-lg font-semibold text-slate-800">₹{calculations.finalTotal}</span>
-              </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold text-slate-800">Total</span>
+                  <span className="text-lg font-semibold text-slate-800">₹{calculations.finalTotal}</span>
+                </div>
 
-              <div className="flex justify-between items-center">
-                <label htmlFor="received" className="text-sm text-slate-600">Received</label>
-                <input
-                  type="number"
-                  id="received"
-                  value={calculations.finalReceived}
-                  onChange={e => setReceivedAmount(e.target.value)}
-                  disabled={saleType === 'cash'}
-                  className="w-32 border-gray-300 rounded-md shadow-sm text-sm text-right font-medium"
-                />
-              </div>
+                <div className="flex justify-between items-center">
+                  <label htmlFor="received" className="text-sm text-slate-600">Received</label>
+                  <input
+                    type="number"
+                    id="received"
+                    value={calculations.finalReceived}
+                    onChange={e => setReceivedAmount(e.target.value)}
+                    disabled={saleType === 'cash'}
+                    className="w-32 border-gray-300 rounded-md shadow-sm text-sm text-right font-medium"
+                  />
+                </div>
 
-              <div className="bg-blue-100 p-3 rounded-md flex justify-between items-center">
-                <span className="text-sm font-medium text-blue-800">Balance</span>
-                <span className="text-sm font-medium text-blue-800">₹{calculations.balance}</span>
-              </div>
+                <div className="bg-blue-100 p-3 rounded-md flex justify-between items-center">
+                  <span className="text-sm font-medium text-blue-800">Balance</span>
+                  <span className="text-sm font-medium text-blue-800">₹{calculations.balance}</span>
+                </div>
 
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -632,13 +855,22 @@ const SaleInvoice = () => {
               ...
             </button>
             {canCreate('sales') && (
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className="px-8 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                {loading ? 'Saving...' : 'Save'}
-              </button>
+              <>
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="px-5 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50"
+                >
+                  {loading ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={handleSaveAndReport}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : 'Save & Report'}
+                </button>
+              </>
             )}
           </div>
         </div>

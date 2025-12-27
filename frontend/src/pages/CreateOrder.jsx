@@ -16,7 +16,8 @@ const createNewItemRow = () => ({
   unit: 'NONE',
   rate: 0,
   amount: 0,
-  deliveryDate: '' // ✅ NEW: Item specific delivery date
+  deliveryDate: '', // ✅ NEW: Item specific delivery date
+  priority: 'Normal'
 });
 
 const CreateOrder = () => {
@@ -24,12 +25,13 @@ const CreateOrder = () => {
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedParty, setSelectedParty] = useState(null);
+  const [partyInput, setPartyInput] = useState('');
   
   // Form State
   const [poNumber, setPoNumber] = useState('');
   const [poDate, setPoDate] = useState(getTodayString());
   const [estDate, setEstDate] = useState(''); // Overall Delivery Date
-  const [priority, setPriority] = useState('Normal');
+  // Order-level priority removed; item-level priority will be used
   const [itemRows, setItemRows] = useState([createNewItemRow()]);
   const [notes, setNotes] = useState('');
   
@@ -60,12 +62,20 @@ const CreateOrder = () => {
     row[field] = value;
 
     if (field === 'item') {
-      const selectedItem = items.find(i => i._id === value);
+      // value can be an item id or an item name (from datalist). Try to match by id first, then by name.
+      let selectedItem = items.find(i => i._id === value);
+      if (!selectedItem) {
+        selectedItem = items.find(i => i.name.toLowerCase() === String(value).toLowerCase());
+      }
       if (selectedItem) {
         row.item = selectedItem._id;
         row.itemName = selectedItem.name;
         row.unit = selectedItem.unit || 'NONE';
         row.rate = parseFloat(selectedItem.salePrice) || 0;
+      } else {
+        // If user typed a free-text item name, store it as itemName and clear item id
+        row.item = null;
+        row.itemName = value;
       }
     }
     
@@ -95,8 +105,8 @@ const CreateOrder = () => {
   }, [itemRows]);
 
   const handleSubmit = async () => {
-    if (!selectedParty || !poNumber) {
-      alert('Please select a Customer and enter PO Number');
+    if (!selectedParty) {
+      alert('Please select a Customer');
       return;
     }
 
@@ -107,7 +117,6 @@ const CreateOrder = () => {
         poNumber,
         poDate,
         estimatedDeliveryDate: estDate, // Overall Date
-        priority,
         status: 'New',
         items: itemRows.map(r => ({
           item: r.item,
@@ -116,17 +125,19 @@ const CreateOrder = () => {
           unit: r.unit,
           rate: r.rate,
           amount: r.amount,
-          deliveryDate: r.deliveryDate // Item Date
+          deliveryDate: r.deliveryDate, // Item Date
+          priority: r.priority || 'Normal'
         })),
         totalAmount: parseFloat(totalAmount),
         notes
       };
-
       await createOrder(orderData);
       navigate('/orders');
     } catch (err) {
-      console.error(err);
-      alert('Failed to create order');
+      console.error('Create order error:', err);
+      const msg = err?.response?.data?.message || err.message || 'Failed to create order';
+      setError(msg);
+      alert(`Failed to create order: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -146,29 +157,39 @@ const CreateOrder = () => {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm p-6">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-700 rounded">{error}</div>
+          )}
           
           {/* Form Header Grid */}
           <div className="grid grid-cols-3 gap-6 mb-6">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">CUSTOMER NAME *</label>
-              <select 
+              <input
+                list="parties-list"
                 className="w-full border border-gray-300 rounded p-2 text-sm bg-white"
-                onChange={(e) => setSelectedParty(e.target.value)}
-                value={selectedParty || ''}
-              >
-                <option value="">Select Customer</option>
-                {parties.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
-              </select>
+                value={partyInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPartyInput(val);
+                  const match = parties.find(p => p.name.toLowerCase() === val.toLowerCase());
+                  setSelectedParty(match ? match._id : null);
+                }}
+                placeholder="Type or select customer..."
+              />
+              <datalist id="parties-list">
+                {parties.map(p => <option key={p._id} value={p.name} />)}
+              </datalist>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">PO NUMBER *</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1">PO NUMBER</label>
               <input 
                 type="text" 
                 className="w-full border border-gray-300 rounded p-2 text-sm"
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
-                placeholder="Enter PO No."
+                placeholder="Enter PO No. (optional)"
               />
             </div>
 
@@ -201,19 +222,7 @@ const CreateOrder = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">PRIORITY</label>
-              <div className="flex gap-4 mt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="priority" value="Normal" checked={priority === 'Normal'} onChange={() => setPriority('Normal')} />
-                  <span className="text-sm">Normal</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="priority" value="High" checked={priority === 'High'} onChange={() => setPriority('High')} />
-                  <span className="text-sm font-bold text-red-600">High</span>
-                </label>
-              </div>
-            </div>
+            {/* Order-level priority removed. Use per-item priority controls below. */}
           </div>
 
           {/* Items Table */}
@@ -227,6 +236,7 @@ const CreateOrder = () => {
                   <th className="p-3 text-left w-24">Delivery Date</th> {/* ✅ NEW COLUMN */}
                   <th className="p-3 text-left w-24">Qty</th>
                   <th className="p-3 text-left w-20">Unit</th>
+                  <th className="p-3 text-left w-20">Priority</th>
                   <th className="p-3 text-left w-28">Rate</th>
                   <th className="p-3 text-right w-32">Amount</th>
                   <th className="p-3 w-10"></th>
@@ -238,14 +248,16 @@ const CreateOrder = () => {
                     <td className="p-3 text-gray-400 cursor-grab"><BiGridVertical /></td>
                     <td className="p-3 text-slate-500">{index + 1}</td>
                     <td className="p-3">
-                      <select 
+                      <input
+                        list="items-list"
                         className="w-full border border-gray-300 rounded p-1.5"
-                        value={row.item || ''}
+                        value={row.itemName || ''}
                         onChange={(e) => handleItemRowChange(index, 'item', e.target.value)}
-                      >
-                        <option value="">Select Item</option>
-                        {items.map(i => <option key={i._id} value={i._id}>{i.name}</option>)}
-                      </select>
+                        placeholder="Type or select item..."
+                      />
+                      <datalist id="items-list">
+                        {items.map(i => <option key={i._id} value={i.name} />)}
+                      </datalist>
                     </td>
                     {/* ✅ Item Delivery Date Input */}
                     <td className="p-3">
@@ -271,6 +283,12 @@ const CreateOrder = () => {
                         value={row.unit}
                         readOnly
                       />
+                    </td>
+                    <td className="p-3">
+                      <select className="w-full border border-gray-300 rounded p-1.5 text-sm" value={row.priority || 'Normal'} onChange={(e) => handleItemRowChange(index, 'priority', e.target.value)}>
+                        <option value="Normal">Normal</option>
+                        <option value="High">High</option>
+                      </select>
                     </td>
                     <td className="p-3">
                       <input 

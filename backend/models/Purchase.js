@@ -51,7 +51,12 @@ const purchaseSchema = new mongoose.Schema({
   
   billDate: { type: Date, default: Date.now },
   dueDate: { type: Date },
-  
+  expectedDeliveryDate: { type: Date },
+  grnNumber: { type: String, trim: true },
+  supplierGSTType: { type: String, trim: true },
+  billTerms: { type: String, trim: true },
+  warehouse: { type: String, trim: true },
+
   notes: { type: String, trim: true },
   image: { type: String }
 }, {

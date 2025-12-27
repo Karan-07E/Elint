@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
-import { getAllOrders } from '../services/api';
+import { getAllOrders, getMyOrders } from '../services/api';
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
 // Helper to format dates safely
@@ -59,46 +59,37 @@ const OrderCalendar = () => {
     return toISODate(today);
   });
 
-  // Fetch all orders (shared across all employees)
+  // Helper to get user role
+  const getUserRole = () => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      return user?.role || 'user';
+    }
+    return 'user';
+  };
+
+  // Fetch orders based on user role
   const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await getAllOrders();
-      const rawOrders = res.data || [];
-
-      // Normalize dates and derive start / end for calendar
-      const normalized = rawOrders
-        .filter(o => o.status !== 'Deleted')
-        .map(o => {
-          const start = toDate(o.poDate) || null;
-
-          const candidateDates = [];
-          if (o.estimatedDeliveryDate) {
-            const est = toDate(o.estimatedDeliveryDate);
-            if (est) candidateDates.push(est);
-          }
-          if (Array.isArray(o.items)) {
-            o.items.forEach(it => {
-              if (it && it.deliveryDate) {
-                const d = toDate(it.deliveryDate);
-                if (d) candidateDates.push(d);
-              }
-            });
-          }
-
-          const end = candidateDates.length
-            ? new Date(Math.max(...candidateDates.map(d => d.getTime())))
-            : start;
-
-          return {
-            ...o,
-            _startDate: start,
-            _endDate: end,
-          };
-        })
-        .filter(o => o._startDate && o._endDate);
-
-      setOrders(normalized);
+      const userRole = getUserRole();
+      
+      // If employee, fetch only their assigned orders; otherwise fetch all orders
+      let res;
+      if (userRole === 'employee') {
+        res = await getMyOrders();
+        // getMyOrders returns { orders: [...] }
+        const rawOrders = res.data.orders || [];
+        const normalized = normalizeOrders(rawOrders);
+        setOrders(normalized);
+      } else {
+        res = await getAllOrders();
+        const rawOrders = res.data || [];
+        const normalized = normalizeOrders(rawOrders);
+        setOrders(normalized);
+      }
+      
       setError(null);
     } catch (err) {
       console.error('Failed to load orders for calendar', err);
@@ -107,6 +98,40 @@ const OrderCalendar = () => {
       setLoading(false);
     }
   }, []);
+
+  // Extract normalization logic
+  const normalizeOrders = (rawOrders) => {
+    return rawOrders
+      .filter(o => o.status !== 'Deleted')
+      .map(o => {
+        const start = toDate(o.poDate || o.startDate) || null;
+
+        const candidateDates = [];
+        if (o.estimatedDeliveryDate || o.deadline) {
+          const est = toDate(o.estimatedDeliveryDate || o.deadline);
+          if (est) candidateDates.push(est);
+        }
+        if (Array.isArray(o.items)) {
+          o.items.forEach(it => {
+            if (it && it.deliveryDate) {
+              const d = toDate(it.deliveryDate);
+              if (d) candidateDates.push(d);
+            }
+          });
+        }
+
+        const end = candidateDates.length
+          ? new Date(Math.max(...candidateDates.map(d => d.getTime())))
+          : start;
+
+        return {
+          ...o,
+          _startDate: start,
+          _endDate: end,
+        };
+      })
+      .filter(o => o._startDate && o._endDate);
+  };
 
   // Initial load
   useEffect(() => {
@@ -295,6 +320,7 @@ const OrderCalendar = () => {
                             ? (order.items[0].itemName || order.items[0].name || 'Item')
                             : 'Item';
                           const isCompleted = order.status === 'Completed';
+                          const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal');
 
                           return (
                             <div
@@ -303,7 +329,7 @@ const OrderCalendar = () => {
                                 mb-0.5 px-1 py-0.5 rounded text-[10px] font-medium truncate
                                 ${isCompleted
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                  : order.priority === 'High'
+                                  : derivedPriority === 'High'
                                   ? 'bg-red-50 text-red-700 border border-red-100'
                                   : 'bg-blue-50 text-blue-700 border border-blue-100'}
                               `}
@@ -403,7 +429,7 @@ const OrderCalendar = () => {
 
                     <div className="flex justify-between items-center mt-1 text-[11px]">
                       <span className="font-medium text-slate-700">₹{(order.totalAmount || 0).toLocaleString()}</span>
-                      {order.priority === 'High' && (
+                      {(order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') && (
                         <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-semibold flex items-center gap-1">
                           <span>High Priority</span>
                         </span>

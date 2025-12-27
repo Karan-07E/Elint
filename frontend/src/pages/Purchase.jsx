@@ -14,6 +14,17 @@ const Purchase = () => {
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [error, setError] = useState(null);
+  
+  const getUserRole = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      return user?.role || 'user';
+    } catch {
+      return 'user';
+    }
+  };
+  
+  const userRole = getUserRole();
 
   useEffect(() => {
     loadItems();
@@ -130,27 +141,33 @@ const Purchase = () => {
                     </button>
                   </div>
                   
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-slate-500">SALE PRICE</p>
-                      <p className="font-medium">₹{selectedItem.salePrice || '0.00'}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">PURCHASE PRICE</p>
-                      <p className="font-medium">₹{selectedItem.purchasePrice || '0.00'}</p>
-                    </div>
+                  <div className={`grid gap-4 text-sm ${userRole !== 'employee' ? 'grid-cols-4' : 'grid-cols-1'}`}>
+                    {userRole !== 'employee' && (
+                      <>
+                        <div>
+                          <p className="text-slate-500">SALE PRICE</p>
+                          <p className="font-medium">₹{selectedItem.salePrice || '0.00'}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">PURCHASE PRICE</p>
+                          <p className="font-medium">₹{selectedItem.purchasePrice || '0.00'}</p>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <p className="text-slate-500">STOCK QUANTITY</p>
                       <p className={`font-medium ${getStockColor(selectedItem.currentStock)}`}>
                         {selectedItem.currentStock} {selectedItem.unit}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-slate-500">STOCK VALUE</p>
-                      <p className="font-medium">
-                        ₹{(parseFloat(selectedItem.purchasePrice || 0) * selectedItem.currentStock).toFixed(2)}
-                      </p>
-                    </div>
+                    {userRole !== 'employee' && (
+                      <div>
+                        <p className="text-slate-500">STOCK VALUE</p>
+                        <p className="font-medium">
+                          ₹{(parseFloat(selectedItem.purchasePrice || 0) * selectedItem.currentStock).toFixed(2)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -166,7 +183,7 @@ const Purchase = () => {
                           <th className="p-3 text-left">Name</th>
                           <th className="p-3 text-left">Date</th>
                           <th className="p-3 text-left">Quantity</th>
-                          <th className="p-3 text-left">Price/Unit</th>
+                          {userRole !== 'employee' && <th className="p-3 text-left">Price/Unit</th>}
                           <th className="p-3 text-left">Status</th>
                         </tr>
                       </thead>
@@ -188,7 +205,7 @@ const Purchase = () => {
                               <td className={`p-3 font-medium ${tx.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 {tx.quantity > 0 ? '+' : ''}{tx.quantity}
                               </td>
-                              <td className="p-3 text-slate-500">₹{tx.rate.toFixed(2)}</td>
+                              {userRole !== 'employee' && <td className="p-3 text-slate-500">₹{tx.rate.toFixed(2)}</td>}
                               <td className="p-3">
                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
                                   {tx.status}

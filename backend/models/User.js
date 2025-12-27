@@ -6,8 +6,8 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'], 
-    default: 'user' 
+    enum: ['admin', 'accounts team', 'employee', 'product team'], 
+    default: '' 
   },
   employeeId: { 
     type: String, 
@@ -47,6 +47,12 @@ const userSchema = new mongoose.Schema({
     createPurchases: { type: Boolean, default: false },
     editPurchases: { type: Boolean, default: false },
     deletePurchases: { type: Boolean, default: false },
+    
+    // Order Management
+    viewOrders: { type: Boolean, default: true },
+    createOrders: { type: Boolean, default: false },
+    editOrders: { type: Boolean, default: false },
+    deleteOrders: { type: Boolean, default: false },
     
     // Reports
     viewReports: { type: Boolean, default: true },

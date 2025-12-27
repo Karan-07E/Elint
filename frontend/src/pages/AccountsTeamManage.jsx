@@ -1,7 +1,18 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
-import { getAllOrders, assignOrder } from '../services/api';
+import { getAllOrders, assignOrder, updateOrder, getMappings } from '../services/api';
+import {
+  LuCalendar,
+  LuClock,
+  LuCircleCheck,
+  LuShoppingBag,
+  LuArrowRight,
+  LuLayoutDashboard,
+  LuUsers,
+  LuChevronRight,
+  LuSearch
+} from "react-icons/lu";
 
 // --- Helpers ---
 
@@ -46,161 +57,291 @@ const isUnassignedOrder = (order) => {
   );
 };
 
+// --- Helpers ---
+
+const getNextJobNumber = (existingJobNumbers) => {
+  let maxSeq = 0;
+  existingJobNumbers.forEach(jobNo => {
+    if (jobNo && jobNo.toUpperCase().startsWith('EJB-')) {
+      const parts = jobNo.split('-');
+      if (parts.length === 2) {
+        const seq = parseInt(parts[1], 10);
+        if (!isNaN(seq) && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    }
+  });
+  const nextSeq = maxSeq + 1;
+  return `EJB-${String(nextSeq).padStart(5, '0')}`;
+};
+
 // --- Components ---
 
-const PriorityBadge = ({ priority }) => {
+const PriorityChip = ({ priority }) => {
   const p = (priority || 'Normal').toLowerCase();
-  let classes = 'bg-slate-100 text-slate-600';
-  if (p === 'high') classes = 'bg-red-50 text-red-600 border border-red-100';
-  else if (p === 'medium') classes = 'bg-amber-50 text-amber-600 border border-amber-100';
-  else if (p === 'low') classes = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+
+  const styles = {
+    high: "bg-red-50 text-red-600 border-red-100 ring-red-500/10",
+    medium: "bg-amber-50 text-amber-600 border-amber-100 ring-amber-500/10",
+    low: "bg-emerald-50 text-emerald-600 border-emerald-100 ring-emerald-500/10",
+    normal: "bg-slate-50 text-slate-600 border-slate-100 ring-slate-500/10"
+  };
+
+  const activeStyle = styles[p] || styles.normal;
 
   return (
-    <span className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full ${classes}`}>
+    <span className={`text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border ring-1 ring-inset ${activeStyle} flex items-center gap-1.5`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${p === 'high' ? 'bg-red-500' : p === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
       {priority || 'Normal'}
     </span>
   );
 };
 
-const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedEmployeeId, domRef, isHighlighted }) => {
+const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedEmployeeId, domRef, isHighlighted, existingJobNumbers, orderMapping }) => {
   const [assigneeId, setAssigneeId] = useState(selectedEmployeeId || '');
+  const [itemJobs, setItemJobs] = useState({}); // { [itemId]: 'EJB-00001', ... }
   const [isExiting, setIsExiting] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (selectedEmployeeId) setAssigneeId(selectedEmployeeId);
   }, [selectedEmployeeId]);
 
+  // Reset local state when order changes or collapses
+  useEffect(() => {
+    // Initialize with existing values from mapping
+    const initialJobs = {};
+    if (orderMapping && orderMapping.items) {
+      orderMapping.items.forEach(i => {
+        // i.itemId is the subdocument ID (string or ObjectId)
+        initialJobs[i.itemId] = i.jobNumber;
+      });
+    }
+    setItemJobs(initialJobs);
+  }, [order._id, orderMapping]);
+
   const { start, deadline } = computeOrderDates(order);
   const customer = order.customerName || order.party?.name || 'Customer';
-  const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+  const derivedPriority = (order.items || []).some(i => (i.priority || '').toLowerCase() === 'high') ? 'High' : (order.priority || 'Normal');
+  const totalAmount = order.totalAmount || 0;
+  const itemCount = (order.items || []).length;
+
+  const handleGenerateItemJob = (itemId) => {
+    // Collect all currently known job numbers (DB + Local)
+    const currentKnown = new Set(existingJobNumbers);
+    Object.values(itemJobs).forEach(j => {
+      if (j) currentKnown.add(j.toUpperCase());
+    });
+
+    const nextJob = getNextJobNumber(currentKnown);
+    setItemJobs(prev => ({ ...prev, [itemId]: nextJob }));
+    setError('');
+  };
 
   const handleAssign = () => {
-    if (!assigneeId) return;
+    setError('');
+
+    // Validation
+    if (!assigneeId) return setError('Please select an employee.');
+
+    // Check if ALL items have a job number
+    const missingItems = order.items.filter(item => !itemJobs[item._id] || !itemJobs[item._id].trim());
+    if (missingItems.length > 0) {
+      return setError('Each item must have a job number before assignment.');
+    }
+
+    // Validate format for all
+    for (const item of order.items) {
+      const jn = itemJobs[item._id];
+      if (!/^EJB-\d{5}$/i.test(jn)) {
+        return setError(`Invalid format for item ${item.itemName || 'Item'}: must be EJB-00001`);
+      }
+    }
+
     setIsExiting(true);
-    // Wait for animation to finish before calling parent handler
+
+    // Prepare payload: Map each item to its job number
+    const assignmentPayload = {
+      employeeId: assigneeId,
+      items: order.items.map(item => ({
+        itemId: item._id, // Use _id or item (ref) depending on what backend expects, usually item._id from population
+        jobNumber: itemJobs[item._id]
+      }))
+    };
+
     setTimeout(() => {
-      onAssign(order._id, assigneeId);
-    }, 300);
+      // Pass the payload object instead of simple args
+      onAssign(order._id, assignmentPayload);
+    }, 400);
   };
 
   if (isExiting) {
-    return <div className="transition-all duration-300 transform scale-95 opacity-0 h-0 overflow-hidden margin-0 padding-0" />;
+    return (
+      <div className="transition-all duration-500 ease-in-out transform -translate-y-4 opacity-0 h-0 overflow-hidden mb-0" />
+    );
   }
 
   return (
     <div
       ref={domRef}
-      className={`bg-white rounded-[18px] border transition-all duration-500 mb-4 overflow-hidden 
-      ${isExpanded ? 'ring-2 ring-blue-50 border-blue-100' : 'border-slate-100'} 
-      ${isHighlighted ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.3),0_10px_15px_-3px_rgba(59,130,246,0.1)] scale-[1.02] border-blue-200 z-10' : 'shadow-sm hover:shadow-md'}`}
+      className={`
+        bg-white rounded-[20px] transition-all duration-300 mb-5 overflow-hidden group
+        ${isExpanded ? 'shadow-xl shadow-blue-900/5 ring-1 ring-blue-50' : 'shadow-sm hover:shadow-md border border-slate-100'} 
+        ${isHighlighted ? 'ring-2 ring-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.1)]' : ''}
+      `}
     >
-      {/* Header (Always Visible) */}
+      {/* Header */}
       <div
         onClick={onToggle}
-        className="p-5 cursor-pointer flex items-center justify-between bg-white hover:bg-slate-50/30 transition-colors"
+        className={`p-5 cursor-pointer flex items-center justify-between transition-colors ${isExpanded ? 'bg-slate-50/50' : 'bg-white hover:bg-slate-50/30'}`}
       >
-        <div className="flex items-center gap-4">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-blue-600 bg-blue-50`}>
-            <span className="font-bold text-sm">PO</span>
+        <div className="flex items-center gap-5">
+          <div className={`
+            w-12 h-12 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm
+            ${isExpanded ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-white border border-slate-100 text-slate-400 group-hover:border-blue-200 group-hover:text-blue-500'}
+            transition-all duration-300
+          `}>
+            <LuShoppingBag className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-800 text-sm">{order.poNumber || 'N/A'}</h3>
-            <p className="text-xs text-slate-500">{customer}</p>
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="font-bold text-slate-800 text-base">{order.poNumber || 'No Job #'}</h3>
+              {isExpanded && <span className="text-xs font-medium text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-100">{customer}</span>}
+            </div>
+            {!isExpanded && <p className="text-xs text-slate-500 font-medium">{customer}</p>}
           </div>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">Deadline</p>
-            <p className={`text-xs font-medium ${deadline && new Date(deadline) < new Date() ? 'text-red-500' : 'text-slate-600'}`}>
+            <div className="flex items-center gap-1.5 justify-end text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-0.5">
+              <LuClock size={10} />
+              <span>Deadline</span>
+            </div>
+            <p className={`text-xs font-semibold ${deadline && new Date(deadline) < new Date() ? 'text-red-500' : 'text-slate-700'}`}>
               {formatDate(deadline)}
             </p>
           </div>
 
-          <PriorityBadge priority={order.priority} />
+          <PriorityChip priority={derivedPriority} />
 
-          <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-blue-100/50 text-blue-600 rotate-90' : 'text-slate-300 group-hover:text-slate-500'}`}>
+            <LuChevronRight size={18} />
           </div>
         </div>
       </div>
 
-      {/* Expanded Body */}
-      {isExpanded && (
-        <div className="px-5 pb-5 pt-0 animate-fadeIn">
-          <div className="h-px w-full bg-slate-100 mb-4" />
+      {/* Expanded Content */}
+      <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className="p-6 pt-2 bg-slate-50/50 border-t border-slate-100">
 
-          <div className="flex flex-col xl:flex-row gap-6">
-            {/* Left Col: Details */}
-            <div className="flex-1 space-y-4">
-              {/* Dates Row */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-3 rounded-xl border border-slate-100/50">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase block">Start Date</span>
-                  <span className="text-xs font-medium text-slate-700">{formatDate(start)}</span>
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Left: Details */}
+            <div className="flex-1 space-y-5">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Items Ref</p>
+                  <p className="text-sm font-semibold text-slate-700 truncate">{itemCount} items ordered</p>
                 </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase block">Total Amount</span>
-                  <span className="text-xs font-bold text-slate-700">₹{(order.totalAmount || 0).toLocaleString()}</span>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Total Value</p>
+                  <p className="text-sm font-bold text-slate-800">₹{totalAmount.toLocaleString()}</p>
                 </div>
               </div>
 
-              {/* Items Table */}
-              <div className="overflow-hidden rounded-xl border border-slate-100">
+              {/* Table with Items and Job Number Generation */}
+              <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 text-slate-500 font-medium">
+                  <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-100">
                     <tr>
-                      <th className="px-3 py-2">Item</th>
-                      <th className="px-3 py-2">Delivery</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Amt</th>
+                      <th className="px-4 py-3">Item Name</th>
+                      <th className="px-4 py-3 w-40">Job Number</th>
+                      <th className="px-4 py-3 text-right">Qty</th>
+                      <th className="px-4 py-3 text-right">Amt</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {order.items?.map((item, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50">
-                        <td className="px-3 py-2 text-slate-700">{item.itemName || item.name}</td>
-                        <td className="px-3 py-2 text-slate-500">{formatDate(item.deliveryDate)}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{item.quantity}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{item.amount}</td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-slate-50">
+                    {(order.items || []).map((item, i) => {
+                      const jobNo = itemJobs[item._id] || '';
+                      return (
+                        <tr key={item._id || i} className="group/row hover:bg-blue-50/30 transition-colors">
+                          <td className="px-4 py-3 font-medium text-slate-700">{item.itemName || item.name}</td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-2">
+                              {jobNo ? (
+                                <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded border border-slate-200 block w-full text-center">
+                                  {jobNo}
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleGenerateItemJob(item._id)}
+                                  className="w-full py-1 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase rounded border border-blue-100 hover:bg-blue-100 transition-colors"
+                                >
+                                  Generate
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-600 font-mono">{item.quantity}</td>
+                          <td className="px-4 py-3 text-right text-slate-600 font-mono">{item.amount?.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-medium tracking-wide">
+                  <span>START: {formatDate(start)}</span>
+                  <span>TOTAL: ₹{totalAmount.toLocaleString()}</span>
+                </div>
               </div>
             </div>
 
-            {/* Right Col: Action */}
-            <div className="w-full xl:w-64 flex flex-col justify-end space-y-3">
-              <div className="bg-blue-50/30 p-4 rounded-xl border border-blue-50 flex flex-col gap-3">
-                <label className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">Assign To Employee</label>
-                <select
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white"
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                >
-                  <option value="">Select Account Employee</option>
-                  {employees.map(emp => (
-                    <option key={emp._id} value={emp._id}>{emp.name}</option>
-                  ))}
-                </select>
+            {/* Right: Action */}
+            <div className="w-full lg:w-72 flex flex-col justify-end">
+              <div className="bg-white p-5 rounded-[20px] border border-blue-100 shadow-lg shadow-blue-500/5 space-y-4 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-green-400"></div>
+
+                {/* Assignee Select */}
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Assign To <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <select
+                      className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-50 border-0 ring-1 ring-slate-200 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all appearance-none cursor-pointer"
+                      value={assigneeId}
+                      onChange={(e) => setAssigneeId(e.target.value)}
+                    >
+                      <option value="">Select Employee...</option>
+                      {employees.map(emp => (
+                        <option key={emp._id} value={emp._id}>{emp.name}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                      <LuChevronRight className="rotate-90 w-4 h-4" />
+                    </div>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="text-xs text-red-500 font-medium bg-red-50 px-3 py-2 rounded-lg border border-red-100">
+                    {error}
+                  </div>
+                )}
+
                 <button
                   onClick={handleAssign}
-                  disabled={!assigneeId}
-                  className="w-full py-2 bg-green-500 text-white rounded-lg text-sm font-medium shadow-md shadow-green-200 hover:bg-green-600 hover:shadow-lg hover:shadow-green-300 disabled:opacity-50 disabled:shadow-none transition-all duration-200 flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none transition-all duration-200 flex items-center justify-center gap-2 group/btn"
                 >
-                  <span>Assign Order</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
+                  <span>Confirm Assignment</span>
+                  <LuArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
                 </button>
               </div>
             </div>
           </div>
+
         </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -208,79 +349,81 @@ const OrderCard = ({ order, employees, onAssign, isExpanded, onToggle, selectedE
 const EmployeeCard = ({ employee, stats, isSelected, onClick }) => {
   const status = stats.pending > 0 ? 'Busy' : 'Available';
   const isBusy = status === 'Busy';
+  const loadPercentage = Math.min((stats.pending / 5) * 100, 100); // Assume 5 is max load for visual
 
   return (
-    <div className="flex flex-col">
+    <div
+      onClick={onClick}
+      className={`
+        relative p-4 rounded-[20px] border cursor-pointer transition-all duration-300 group overflow-hidden
+        ${isSelected
+          ? 'bg-blue-50/50 border-blue-200 shadow-md ring-1 ring-blue-100'
+          : 'bg-white border-slate-100 hover:border-blue-100 hover:shadow-md'
+        }
+      `}
+    >
+      {/* Background Progress Bar for Load */}
       <div
-        onClick={onClick}
-        className={`p-4 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden z-10 ${isSelected
-          ? 'bg-white border-blue-100 ring-2 ring-blue-50 shadow-md transform scale-[1.01]'
-          : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
-          }`}
-      >
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
-            }`}>
-            {employee.name?.charAt(0).toUpperCase()}
+        className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-blue-400 to-indigo-400 opacity-20 transition-all duration-1000"
+        style={{ width: `${loadPercentage}%` }}
+      />
+
+      <div className="flex items-center gap-4 relative z-10">
+        <div className={`
+          w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-bold shadow-inner transition-colors duration-300
+          ${isSelected ? 'bg-white text-blue-600 shadow-blue-100' : 'bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-500'}
+        `}>
+          {employee.name?.charAt(0).toUpperCase()}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start mb-0.5">
+            <h4 className={`text-sm font-bold truncate ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>
+              {employee.name}
+            </h4>
+            <span className={`
+              text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border
+              ${isBusy
+                ? 'bg-amber-50 text-amber-600 border-amber-100'
+                : 'bg-emerald-50 text-emerald-600 border-emerald-100'}
+            `}>
+              {status}
+            </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-start">
-              <h4 className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>
-                {employee.name}
-              </h4>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isBusy ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
-                {status}
-              </span>
-            </div>
-            <p className={`text-xs truncate ${isSelected ? 'text-blue-700/80' : 'text-slate-400'}`}>
-              {employee.email}
-            </p>
-          </div>
+          <p className="text-xs text-slate-400 truncate font-medium">{employee.email}</p>
         </div>
       </div>
 
-      {/* Inline Details Panel - Dynamic Stats */}
-      <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSelected ? 'max-h-96 opacity-100 mt-2 mb-4' : 'max-h-0 opacity-0'}`}>
-        <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 mx-1">
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-              <p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Total Assigned</p>
-              <p className="text-lg font-bold text-slate-700">{stats.total}</p>
-            </div>
-            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-              <p className="text-[10px] uppercase text-slate-400 font-semibold mb-1">Pending Orders</p>
-              <p className="text-lg font-bold text-amber-500">{stats.pending}</p>
-            </div>
+      {/* Expanded Stats - Only visible when selected */}
+      <div className={`
+        mt-4 pt-4 border-t border-slate-100/50 transition-all duration-300
+        ${isSelected ? 'opacity-100 translate-y-0' : 'opacity-50 grayscale fixed hidden'}
+      `}>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-white/60 p-2.5 rounded-xl border border-slate-50">
+            <p className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">Active</p>
+            <p className="text-sm font-bold text-slate-700">{stats.pending}</p>
           </div>
-
-          <div className="space-y-3">
-            <div>
-              <p className="text-[10px] uppercase text-slate-400 font-semibold">Full Name</p>
-              <p className="text-xs font-medium text-slate-700">{employee.name}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] uppercase text-slate-400 font-semibold">Employee ID</p>
-                <p className="text-xs font-medium text-slate-700 font-mono">{employee.employeeId || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase text-slate-400 font-semibold">Role</p>
-                <p className="text-xs font-medium text-slate-700 capitalize">{employee.role}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] uppercase text-slate-400 font-semibold">Joined</p>
-                <p className="text-xs font-medium text-slate-700">{formatDate(employee.date)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase text-slate-400 font-semibold">Completed</p>
-                <p className="text-xs font-bold text-green-600">{stats.completed}</p>
-              </div>
-            </div>
+          <div className="bg-white/60 p-2.5 rounded-xl border border-slate-50">
+            <p className="text-[10px] uppercase text-slate-400 font-bold mb-0.5">Completed</p>
+            <p className="text-sm font-bold text-emerald-600">{stats.completed}</p>
           </div>
         </div>
+
+        {/* Assigned Orders List */}
+        {stats.activeOrders && stats.activeOrders.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase text-slate-400 font-bold">Current Assignments</p>
+            <div className="space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
+              {stats.activeOrders.map(o => (
+                <div key={o._id} className="text-xs bg-slate-50/80 p-2 rounded border border-slate-100 flex justify-between items-center">
+                  <span className="font-medium text-slate-600">{o.displayJobNumber || o.poNumber || 'PO-####'}</span>
+                  <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{o.status || 'Pending'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -289,27 +432,37 @@ const EmployeeCard = ({ employee, stats, isSelected, onClick }) => {
 // --- Main Page ---
 
 const AccountsTeamManage = () => {
+  // Same logic as before, just styled container
   const [searchParams] = useSearchParams();
   const orderRefs = useRef({});
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const [allOrders, setAllOrders] = useState([]); // Store ALL orders for stats
+  const [allOrders, setAllOrders] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [mappings, setMappings] = useState([]); // Store fetched mappings
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // UI State
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [highlightedOrderId, setHighlightedOrderId] = useState(null);
-  const [toast, setToast] = useState(null); // { message, type }
+  const [toast, setToast] = useState(null);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const ordersRes = await getAllOrders(); // Axios response
+      // Fetch Orders
+      const ordersRes = await getAllOrders();
+      // Fetch Mappings
+      let mappingsData = [];
+      try {
+        const mappingsRes = await getMappings();
+        mappingsData = mappingsRes.data || [];
+      } catch (e) { console.error('Error fetching mappings', e); }
+      setMappings(mappingsData);
 
-      // Fetch employees
+      // Fetch Employees
       let employeesData = [];
       if (token) {
         try {
@@ -317,156 +470,182 @@ const AccountsTeamManage = () => {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (usersRes.ok) employeesData = await usersRes.json();
-        } catch (e) {
-          console.error('Failed to fetch employees', e);
-        }
+        } catch (e) { console.error(e); }
       }
 
-      const rawOrders = ordersRes.data || [];
-      setAllOrders(rawOrders); // Keep all for stats
-
-      const accountsEmps = (employeesData || []).filter((u) => u.role === 'accounts employee');
+      setAllOrders(ordersRes.data || []);
+      const accountsEmps = (employeesData || []).filter((u) => u.role === 'employee');
       setEmployees(accountsEmps);
-      setError(null);
     } catch (err) {
-      console.error('Failed to load data', err);
-      setError('Failed to load dashboard data.');
+      setError('Failed to load data.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  // Handle "Jump to Order" from URL
+  // Filter unassigned
+  const unassignedOrders = useMemo(() => {
+    const unassigned = allOrders.filter(isUnassignedOrder);
+    if (!searchQuery) return unassigned;
+    const q = searchQuery.toLowerCase();
+    return unassigned.filter(o =>
+      (o.poNumber || '').toLowerCase().includes(q) ||
+      (o.customerName || o.party?.name || '').toLowerCase().includes(q)
+    );
+  }, [allOrders, searchQuery]);
+
+  // Handle Deep Linking
   useEffect(() => {
-    const jumpId = searchParams.get('jump');
+    const jumpId = searchParams.get('orderId');
     if (jumpId && !loading && allOrders.length > 0) {
-      // Find order and check if unassigned
-      const order = allOrders.find(o => o._id === jumpId);
-
-      if (order && isUnassignedOrder(order)) {
-        // Use timeout to ensure DOM is ready
+      // Find if this order is strictly unassigned
+      const target = unassignedOrders.find(o => o._id === jumpId);
+      if (target) {
+        setHighlightedOrderId(jumpId);
+        setExpandedOrderId(jumpId);
+        // Scroll to it
         setTimeout(() => {
-          const el = orderRefs.current[jumpId];
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setExpandedOrderId(jumpId);
-            setHighlightedOrderId(jumpId);
-
-            // Try to find the select and focus it
-            const select = el.querySelector('select');
-            if (select) select.focus();
-
-            // Remove highlight after 2.5s
-            setTimeout(() => setHighlightedOrderId(null), 2500);
+          if (orderRefs.current[jumpId]) {
+            orderRefs.current[jumpId].scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
-        }, 300);
+        }, 500);
       }
     }
-  }, [searchParams, loading, allOrders]);
+  }, [searchParams, loading, allOrders, unassignedOrders]);
 
-  // Filter unassigned orders for left panel
-  const unassignedOrders = useMemo(() => {
-    return allOrders.filter(isUnassignedOrder);
-  }, [allOrders]);
-
-  // Calculate dynamic stats for an employee
   const getEmployeeStats = (empId) => {
     const empOrders = allOrders.filter(o =>
       (o.assignedAccountEmployee === empId) ||
       (o.assignedAccountEmployee?._id === empId) ||
       (o.accountsEmployee === empId)
     );
+    // Enrich orders with job numbers for display
+    const enrichedOrders = empOrders.map(o => {
+      const mapping = mappings.find(m => m.orderId === o._id);
+      const jobNumbers = mapping ? mapping.items.map(i => i.jobNumber).join(', ') : '';
+      return { ...o, displayJobNumber: jobNumbers || o.poNumber };
+    });
 
-    const total = empOrders.length;
-    const completed = empOrders.filter(o => o.status === 'Completed').length;
-    const pending = total - completed;
-
-    return { total, completed, pending };
+    const completed = enrichedOrders.filter(o => o.status === 'Completed').length;
+    const active = enrichedOrders.filter(o => o.status !== 'Completed');
+    return {
+      total: empOrders.length,
+      completed,
+      pending: active.length,
+      activeOrders: active
+    };
   };
 
-  const handleAssign = async (orderId, employeeId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const emp = employees.find(e => e._id === employeeId);
-      const order = unassignedOrders.find(o => o._id === orderId);
+  // Create a Set of existing Job Numbers (poNumbers) for quick lookup
+  const existingJobNumbers = useMemo(() => {
+    const set = new Set();
+    // 1. Add all job numbers from Mappings (Source of Truth)
+    mappings.forEach(m => {
+      if (m.items) {
+        m.items.forEach(i => set.add(i.jobNumber.trim().toLowerCase()));
+      }
+    });
+    // 2. Add PO numbers just in case (optional, but requested format checks EJB-xxxxx)
+    // Actually, only include EJB-xxxxx format
+    return set;
+  }, [mappings]);
 
-      // Optimistically optionally select the employee in the right panel
+  const handleAssign = async (orderId, payload) => {
+    try {
+      const { employeeId, items } = payload;
+      const emp = employees.find(e => e._id === employeeId);
       if (employeeId) setSelectedEmployeeId(employeeId);
 
-      // Call API
-      await assignOrder(orderId, employeeId);
+      // 1. Assign Order with Item-Level Job Numbers
+      // We pass the payload directly to the API
+      await assignOrder(orderId, payload);
 
-      // Success
-      setToast({ message: `Order Assigned to ${emp?.name || 'employee'}`, type: 'success' });
+      const jobSummary = items.length === 1 ? items[0].jobNumber : `${items.length} Job Numbers`;
+      setToast({ message: `Assigned ${jobSummary} to ${emp?.name || 'Employee'}`, type: 'success' });
 
-      // Update local state for immediate UI reflection without refetch
-      setAllOrders(prev => prev.map(o => {
-        if (o._id === orderId) {
-          return { ...o, assignedAccountEmployee: employeeId }; // Mark as assigned recursively
-        }
-        return o;
-      }));
+      // Update local state to reflect changes immediately
+      // We mark the order as assigned to the employee. 
+      // Note: We don't set a single 'poNumber' anymore since it's per item
+      setAllOrders(prev => prev.map(o => o._id === orderId ? { ...o, assignedAccountEmployee: employeeId, status: 'Assigned' } : o));
 
-      // Clear toast after 3s
+      // Refresh mappings to get the new ones? 
+      // Ideally yes, but for now we trust optimistic UI. 
+      // Or we can append to mappings locally to allow duplicates check to work immediately for next assignment?
+      const newItemEntry = { orderId, items: items.map(i => ({ jobNumber: i.jobNumber })) };
+      setMappings(prev => [...prev, newItemEntry]);
+
       setTimeout(() => setToast(null), 3000);
-
     } catch (e) {
-      console.error(e);
-      alert('Error assigning order: ' + (e.response?.data?.message || e.message));
+      alert('Error: ' + e.message);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/50 flex text-slate-800 font-sans">
+    <div className="flex h-screen bg-[#F8FAFC] font-sans selection:bg-blue-100">
       <Sidebar />
-      <div className="flex-1 ml-64 p-8">
+      <div className="flex-1 flex flex-col h-screen ml-64 overflow-hidden relative">
+        {/* Top Gradient Accent */}
+        <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-50/50 to-transparent pointer-events-none" />
 
-        {/* Minimal Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Manage Teams</h1>
+        {/* Header */}
+        <div className="px-10 py-8 z-10 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 mb-1">
+              Team Workflow
+            </h1>
+            <p className="text-sm text-slate-400 font-medium">Assign orders and manage workload</p>
+          </div>
+          <div className="flex gap-3">
+            <div className="bg-white px-4 py-2 rounded-full border border-slate-200 shadow-sm flex items-center gap-2 text-sm text-slate-500">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              {employees.length} Team Members
+            </div>
+            <div className="bg-white px-4 py-2 rounded-full border border-slate-200 shadow-sm flex items-center gap-2 text-sm text-slate-500">
+              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              {unassignedOrders.length} Pending
+            </div>
+          </div>
         </div>
 
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm flex items-center gap-3">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            {error}
-          </div>
-        )}
+        {/* Content Grid */}
+        <div className="flex-1 px-10 pb-10 overflow-hidden">
+          <div className="grid grid-cols-12 gap-8 h-full">
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-12 gap-8 h-[calc(100vh-140px)]">
-
-          {/* Left Panel: Unassigned Orders (70%) */}
-          <div className="col-span-12 lg:col-span-8 flex flex-col gap-4 text-sm">
-            <div className="bg-white rounded-[24px] shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden relative">
-              <div className="px-8 py-6 border-b border-slate-50 bg-white z-10 sticky top-0">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-800">Unassigned Orders</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Orders waiting to be assigned</p>
+            {/* Left Panel: Unassigned Orders */}
+            <div className="col-span-8 flex flex-col h-full bg-white/60 backdrop-blur-xl rounded-[32px] border border-white shadow-xl shadow-slate-200/50 overflow-hidden relative">
+              <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white/50 sticky top-0 z-20 backdrop-blur-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                    <LuLayoutDashboard />
                   </div>
-                  {unassignedOrders.length > 0 && (
-                    <span className="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                      {unassignedOrders.length}
-                    </span>
-                  )}
+                  <h2 className="font-bold text-slate-800">Unassigned Orders</h2>
+                </div>
+
+                {/* Search / Filter placeholder */}
+                <div className="relative">
+                  <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Filter PO..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all w-48 placeholder:text-slate-400"
+                  />
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/30">
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                 {loading ? (
-                  <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Loading orders...</div>
+                  <div className="flex items-center justify-center h-full text-slate-400 animate-pulse">Loading...</div>
                 ) : unassignedOrders.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                      <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
+                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 text-slate-300">
+                      <LuCircleCheck className="w-8 h-8" />
                     </div>
-                    <h3 className="text-slate-700 font-semibold">All cleared!</h3>
-                    <p className="text-slate-400 text-xs mt-1">No unassigned orders found.</p>
+                    <p className="font-medium text-slate-500">All caught up!</p>
+                    <p className="text-xs text-slate-400">No unassigned orders available.</p>
                   </div>
                 ) : (
                   unassignedOrders.map(order => (
@@ -480,63 +659,57 @@ const AccountsTeamManage = () => {
                       onToggle={() => setExpandedOrderId(expandedOrderId === order._id ? null : order._id)}
                       selectedEmployeeId={selectedEmployeeId}
                       isHighlighted={highlightedOrderId === order._id}
+                      existingJobNumbers={existingJobNumbers}
+                      orderMapping={mappings.find(m => m.orderId === order._id || m._id === order._id)}
                     />
                   ))
                 )}
               </div>
             </div>
-          </div>
 
-          {/* Right Panel: Accounts Team (30%) */}
-          <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 text-sm">
-            <div className="bg-white rounded-[24px] shadow-sm border border-slate-100 flex flex-col h-full overflow-hidden">
-              <div className="px-6 py-6 border-b border-slate-50">
-                <h2 className="text-lg font-bold text-slate-800">Accounts Team</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Manage your team members</p>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 bg-slate-50/20">
-                <div className="flex flex-col gap-2">
-                  {employees.map(emp => {
-                    const stats = getEmployeeStats(emp._id);
-                    return (
-                      <EmployeeCard
-                        key={emp._id}
-                        employee={emp}
-                        stats={stats}
-                        isSelected={selectedEmployeeId === emp._id}
-                        onClick={() => setSelectedEmployeeId(selectedEmployeeId === emp._id ? null : emp._id)}
-                      />
-                    );
-                  })}
-
-                  {employees.length === 0 && !loading && (
-                    <div className="text-center p-6 text-slate-400 text-xs">No team members found.</div>
-                  )}
+            {/* Right Panel: Team */}
+            <div className="col-span-4 flex flex-col h-full bg-white/60 backdrop-blur-xl rounded-[32px] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
+              <div className="px-6 py-6 border-b border-slate-100 bg-white/50 sticky top-0 z-20 backdrop-blur-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <LuUsers />
+                  </div>
+                  <h2 className="font-bold text-slate-800">Accounts Team</h2>
                 </div>
               </div>
 
-              <div className="p-3 bg-white border-t border-slate-50 text-[10px] text-slate-300 text-center">
-                Team Overview
+              <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar bg-slate-50/30">
+                {employees.map(emp => (
+                  <EmployeeCard
+                    key={emp._id}
+                    employee={emp}
+                    stats={getEmployeeStats(emp._id)}
+                    isSelected={selectedEmployeeId === emp._id}
+                    onClick={() => setSelectedEmployeeId(selectedEmployeeId === emp._id ? null : emp._id)}
+                  />
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Toast */}
+        {toast && (
+          <div className="fixed bottom-10 right-10 z-50 animate-bounce-in">
+            <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-slate-700/50">
+              <div className="bg-green-500 rounded-full p-1">
+                <LuCircleCheck className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold">{toast.message}</p>
+                <p className="text-[10px] text-slate-400">Successfully updated.</p>
               </div>
             </div>
           </div>
-
-        </div>
+        )}
 
       </div>
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed bottom-8 right-8 z-50 animate-bounce-in">
-          <div className="bg-slate-900/90 backdrop-blur-sm text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-3">
-            <span className="bg-green-500 rounded-full p-0.5">
-              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-            </span>
-            <p className="text-xs font-medium">{toast.message}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

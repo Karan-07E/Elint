@@ -1,9 +1,9 @@
 // src/pages/PurchaseBill.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
-import { getAllParties, getAllItems, createPurchase } from '../services/api'; // Use createPurchase
+import { getAllParties, getAllItems, createPurchase, getNextPurchaseBill } from '../services/api'; // Use createPurchase
 import { BiGridVertical } from 'react-icons/bi';
 import { FaTrashAlt } from 'react-icons/fa';
 import { canCreate } from '../utils/permissions';
@@ -27,6 +27,13 @@ const PurchaseBill = () => {
   const [parties, setParties] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedParty, setSelectedParty] = useState(null);
+  const [partyInput, setPartyInput] = useState('');
+  const fileInputRef = useRef(null);
+  const [phone, setPhone] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [showPartySuggestions, setShowPartySuggestions] = useState(false);
+
+  const inputClass = 'w-full border-gray-300 rounded-md shadow-sm text-sm h-10 px-3 py-2';
   
   // Form State
   const [billNumber, setBillNumber] = useState('');
@@ -36,6 +43,16 @@ const PurchaseBill = () => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState('');
+  const [customPaymentTypes, setCustomPaymentTypes] = useState([]);
+  const [showPaymentInput, setShowPaymentInput] = useState(false);
+  const [newPaymentType, setNewPaymentType] = useState('');
+
+  // Purchase-specific fields
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
+  const [grnNumber, setGrnNumber] = useState('');
+  const [supplierGSTType, setSupplierGSTType] = useState('');
+  const [billTerms, setBillTerms] = useState('');
+  const [warehouse, setWarehouse] = useState('');
   
   // Summary State
   const [roundOff, setRoundOff] = useState(true);
@@ -49,12 +66,17 @@ const PurchaseBill = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch suppliers or 'both'
-        const partiesRes = await getAllParties('supplier');
+        // Fetch parties (use 'customer' type per request)
+        const partiesRes = await getAllParties('customer');
+        console.debug('Parties fetched (supplier):', partiesRes.data);
         setParties(partiesRes.data || []);
         
         const itemsRes = await getAllItems();
         setItems(itemsRes.data || []);
+        if ((partiesRes.data || []).length === 1) {
+          setPartyInput(partiesRes.data[0].name);
+          setSelectedParty(partiesRes.data[0]);
+        }
       } catch (err) {
         setError('Failed to load parties or items.');
       }
@@ -62,10 +84,73 @@ const PurchaseBill = () => {
     fetchData();
   }, []);
 
+  // Filtered parties helper for react-select AsyncSelect
+  // (Using datalist to mirror Sales UI)
+
+  // keep local phone / billing address in sync when party changes
+  useEffect(() => {
+    setPhone(selectedParty?.phone || '');
+    setBillingAddress(selectedParty?.billingAddress?.street || '');
+  }, [selectedParty]);
+
   // Handle party selection
   const handlePartyChange = (partyId) => {
     const party = parties.find(p => p._id === partyId);
     setSelectedParty(party || null);
+  };
+
+  const handlePartyInputChange = (value) => {
+    setPartyInput(value);
+    // Try exact match first
+    const exact = parties.find(p => p.name === value);
+    if (exact) {
+      setSelectedParty(exact);
+      return;
+    }
+    // Otherwise clear selection until blur
+    setSelectedParty(null);
+  };
+
+  const tryMatchParty = (val) => {
+    if (!val) return null;
+    const found = parties.find(p => p.name.toLowerCase().includes(val.toLowerCase()));
+    if (found) setSelectedParty(found);
+    return found || null;
+  };
+
+  const resolvePartyFromInput = (val) => {
+    // If already selected, return it
+    if (selectedParty) return selectedParty;
+    if (!val) return null;
+    // Exact case-insensitive match
+    const exact = parties.find(p => p.name.toLowerCase() === val.toLowerCase());
+    if (exact) {
+      setSelectedParty(exact);
+      return exact;
+    }
+    // Partial/fuzzy match
+    const fuzzy = parties.find(p => p.name.toLowerCase().includes(val.toLowerCase()));
+    if (fuzzy) {
+      setSelectedParty(fuzzy);
+      return fuzzy;
+    }
+    return null;
+  };
+
+  const handleImageFile = async (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImage(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const addCustomPaymentType = () => {
+    const v = newPaymentType.trim();
+    if (!v) return;
+    setCustomPaymentTypes(prev => Array.from(new Set([...prev, v])));
+    setPaymentType(v);
+    setNewPaymentType('');
+    setShowPaymentInput(false);
   };
 
   // Handle changes within an item row
@@ -77,7 +162,7 @@ const PurchaseBill = () => {
 
     // When an item is selected
     if (field === 'item') {
-      const selectedItem = items.find(i => i._id === value);
+      const selectedItem = items.find(i => i._id === value || i.name === value);
       if (selectedItem) {
         row.item = selectedItem;
         row.unit = selectedItem.unit || 'NONE';
@@ -171,7 +256,9 @@ const PurchaseBill = () => {
 
   // Handle Save
   const handleSubmit = async () => {
-    if (!selectedParty) {
+    // Fuzzy match party if typed
+    let partyToUse = resolvePartyFromInput(partyInput);
+    if (!partyToUse) {
       setError('Please select a party.');
       return;
     }
@@ -181,48 +268,102 @@ const PurchaseBill = () => {
     setMessage(null);
 
     try {
-      const purchaseData = {
-        party: selectedParty._id,
-        billNumber,
-        billDate,
-        stateOfSupply,
-        items: calculations.calculatedRows.map(row => ({
-          item: row.item._id,
-          description: row.description,
-          quantity: row.quantity,
-          unit: row.unit,
-          rate: row.rate,
-          discountType: row.discountType,
-          discountValue: row.discountValue,
-          discountAmount: row.discountAmount,
-          taxableAmount: parseFloat(row.amount) - parseFloat(row.taxAmount),
-          taxRate: row.taxRate,
-          taxAmount: row.taxAmount,
-          amount: row.amount,
-        })),
-        subtotal: calculations.subtotal,
-        taxAmount: calculations.totalTax,
-        roundOff: calculations.roundOffValue,
-        totalAmount: calculations.finalTotal,
-        paidAmount: calculations.finalPaid,
-        balanceAmount: calculations.balance,
-        paymentStatus: calculations.balance == 0 ? 'paid' : (calculations.finalPaid > 0 ? 'partial' : 'unpaid'),
-        notes: description,
-        image: image || null,
-        paymentDetails: [{
-          paymentMode: paymentType.toLowerCase(),
-          amount: calculations.finalPaid,
-        }]
-      };
-      
-      // Use createPurchase from api.js
-      await createPurchase(purchaseData);
+      const purchaseData = buildPurchaseData(partyToUse);
+      const res = await createPurchase(purchaseData);
       setMessage('Purchase created successfully!');
-      navigate('/purchase'); // Navigate to the new purchase dashboard
-      
+      navigate('/purchase');
+      return res;
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.message || 'Failed to create purchase.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveAndReport = async () => {
+    let partyToUse = resolvePartyFromInput(partyInput);
+    if (!partyToUse) {
+      setError('Please select a party.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const purchaseData = buildPurchaseData(partyToUse);
+      const res = await createPurchase(purchaseData);
+      const purchaseId = res.data._id;
+      navigate(`/purchases/report/${purchaseId}`);
+      return res;
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.message || 'Failed to create purchase.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Build purchase payload
+  const buildPurchaseData = (partyToUse) => ({
+    party: partyToUse._id,
+    billNumber,
+    billDate,
+    stateOfSupply,
+    expectedDeliveryDate,
+    grnNumber,
+    supplierGSTType,
+    billTerms,
+    warehouse,
+    items: calculations.calculatedRows.map(row => ({
+      item: row.item._id,
+      description: row.description,
+      quantity: row.quantity,
+      unit: row.unit,
+      rate: row.rate,
+      discountType: row.discountType,
+      discountValue: row.discountValue,
+      discountAmount: row.discountAmount,
+      taxableAmount: parseFloat(row.amount) - parseFloat(row.taxAmount),
+      taxRate: row.taxRate,
+      taxAmount: row.taxAmount,
+      amount: row.amount,
+    })),
+    subtotal: calculations.subtotal,
+    taxAmount: calculations.totalTax,
+    roundOff: calculations.roundOffValue,
+    totalAmount: calculations.finalTotal,
+    paidAmount: calculations.finalPaid,
+    balanceAmount: calculations.balance,
+    paymentStatus: calculations.balance == 0 ? 'paid' : (calculations.finalPaid > 0 ? 'partial' : 'unpaid'),
+    notes: description,
+    image: image || null,
+    paymentDetails: [{ paymentMode: paymentType.toLowerCase(), amount: calculations.finalPaid }]
+  });
+
+  // Share: save then open report PDF in new tab
+  const handleShare = async () => {
+    setError(null);
+    setMessage(null);
+    setLoading(true);
+    try {
+      // Build payload and create purchase without navigating
+      let partyToUse = resolvePartyFromInput(partyInput);
+      if (!partyToUse) {
+        setError('Please select a party.');
+        return;
+      }
+      const payload = buildPurchaseData(partyToUse);
+      const res = await createPurchase(payload);
+      const id = res?.data?._id;
+      if (id) {
+        const url = `${process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000'}/api/purchases/${id}/report/pdf`;
+        window.open(url, '_blank');
+      } else {
+        setError('Could not create purchase to share.');
+      }
+    } catch (err) {
+      console.error('Share error', err);
+      setError('Failed to share purchase.');
     } finally {
       setLoading(false);
     }
@@ -238,6 +379,16 @@ const PurchaseBill = () => {
           <h1 className="text-2xl font-semibold text-slate-800">Create Purchase Bill</h1>
         </div>
 
+        {/* Error / Message */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-700 rounded">{error}</div>
+        )}
+        {message && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-100 text-green-700 rounded">{message}</div>
+        )}
+
+        
+
         {/* Main Invoice Form */}
         <div className="bg-white rounded-lg shadow-sm">
           {/* Top Section */}
@@ -246,16 +397,18 @@ const PurchaseBill = () => {
               {/* Party */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Party *</label>
-                <select
-                  value={selectedParty?._id || ''}
-                  onChange={(e) => handlePartyChange(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                >
-                  <option value="" disabled>Select Party/Supplier</option>
+                <input
+                  list="partiesList"
+                  value={partyInput}
+                  onChange={(e) => handlePartyInputChange(e.target.value)}
+                  className={inputClass}
+                  placeholder="Type or select party/supplier"
+                />
+                <datalist id="partiesList">
                   {parties.map(party => (
-                    <option key={party._id} value={party._id}>{party.name}</option>
+                    <option key={party._id} value={party.name} />
                   ))}
-                </select>
+                </datalist>
                 {selectedParty && (
                   <div className="mt-1 text-xs text-slate-500">
                     Bal: {selectedParty.currentBalance} ({selectedParty.balanceType})
@@ -277,12 +430,30 @@ const PurchaseBill = () => {
               {/* Bill # */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Bill Number</label>
-                <input
-                  type="text"
-                  value={billNumber}
-                  onChange={e => setBillNumber(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={billNumber}
+                    onChange={e => setBillNumber(e.target.value)}
+                    className={inputClass}
+                    placeholder="Enter or generate bill #"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await getNextPurchaseBill();
+                        setBillNumber(res.data.bill);
+                      } catch (err) {
+                        console.error('Failed to generate bill', err);
+                        setError(err.response?.data?.message || 'Failed to generate bill number');
+                      }
+                    }}
+                    className="px-3 py-2 bg-gray-100 border rounded-md text-sm h-10"
+                  >
+                    Generate
+                  </button>
+                </div>
               </div>
 
               {/* Billing Address (Not in screenshot, but good to have) */}
@@ -291,7 +462,7 @@ const PurchaseBill = () => {
                 <textarea
                   value={selectedParty?.billingAddress?.street || ''}
                   readOnly
-                  rows="1"
+                  rows="2"
                   className="w-full border-gray-300 rounded-md shadow-sm text-sm bg-gray-100"
                 />
               </div>
@@ -303,7 +474,7 @@ const PurchaseBill = () => {
                   type="date"
                   value={billDate}
                   onChange={e => setBillDate(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                  className={inputClass}
                 />
               </div>
               
@@ -313,7 +484,7 @@ const PurchaseBill = () => {
                 <select
                   value={stateOfSupply}
                   onChange={e => setStateOfSupply(e.target.value)}
-                  className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                  className={inputClass}
                 >
                   <option value="">Select State</option>
                   <option value="Karnataka">Karnataka</option>
@@ -332,7 +503,6 @@ const PurchaseBill = () => {
                   <th className="p-3 text-left w-6"></th>
                   <th className="p-3 text-left w-8">#</th>
                   <th className="p-3 text-left w-1/4">Item</th>
-                  <th className="p-3 text-left w-1/6">Colour</th>
                   <th className="p-3 text-left">Qty</th>
                   <th className="p-3 text-left">Unit</th>
                   <th className="p-3 text-left">Price/Unit</th>
@@ -348,25 +518,20 @@ const PurchaseBill = () => {
                     <td className="p-3 text-gray-400 cursor-grab"><BiGridVertical /></td>
                     <td className="p-3 text-slate-500">{index + 1}</td>
                     <td className="p-3">
-                      <select
-                        value={row.item?._id || ''}
+                      <input
+                        list="itemsList"
+                        value={row.item?.name || ''}
                         onChange={e => handleItemRowChange(index, 'item', e.target.value)}
                         className="w-full border-gray-300 rounded-md shadow-sm text-sm"
-                      >
-                        <option value="" disabled>Select Item</option>
-                        {items.map(item => (
-                          <option key={item._id} value={item._id}>{item.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={row.description}
-                        onChange={e => handleItemRowChange(index, 'description', e.target.value)}
-                        className="w-full border-gray-300 rounded-md shadow-sm text-sm"
+                        placeholder="Type or select item"
                       />
+                      <datalist id="itemsList">
+                        {items.map(item => (
+                          <option key={item._id} value={item.name} />
+                        ))}
+                      </datalist>
                     </td>
+                    {/* Description removed (Colour column) */}
                     <td className="p-3">
                       <input
                         type="number"
@@ -461,23 +626,36 @@ const PurchaseBill = () => {
           <div className="p-6 bg-gray-50 border-t border-gray-200 grid grid-cols-2 gap-8">
             {/* Left Panel */}
             <div>
-              <div className="mb-4">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Payment Type</label>
-                <select
-                  value={paymentType}
-                  onChange={e => setPaymentType(e.target.value)}
-                  className="w-1/2 border-gray-300 rounded-md shadow-sm text-sm"
-                >
-                  <option>Cash</option>
-                  <option>Bank</option>
-                  <option>Cheque</option>
-                  <option>UPI</option>
-                  <option>Card</option>
-                </select>
-              </div>
+              {/* Removed duplicate simple Payment Type control; use the custom-add section below. */}
               
               <div className="space-y-3 text-sm">
-                <a href="#" className="text-blue-600 font-medium">+ Add Payment type</a>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Payment Type</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={paymentType}
+                      onChange={e => setPaymentType(e.target.value)}
+                      className={inputClass + ' w-1/2'}
+                    >
+                      <option>Cash</option>
+                      <option>Bank</option>
+                      <option>Cheque</option>
+                      <option>UPI</option>
+                      <option>Card</option>
+                      {customPaymentTypes.map((p, i) => (
+                        <option key={i}>{p}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => setShowPaymentInput(!showPaymentInput)} className="text-blue-600">+ Add</button>
+                  </div>
+                  {showPaymentInput && (
+                    <div className="mt-2 flex gap-2">
+                      <input value={newPaymentType} onChange={e => setNewPaymentType(e.target.value)} className="border rounded-md px-2" />
+                      <button onClick={addCustomPaymentType} className="px-2 py-1 bg-blue-600 text-white rounded-md">Add</button>
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                   <textarea
@@ -487,7 +665,17 @@ const PurchaseBill = () => {
                     className="w-full border-gray-300 rounded-md shadow-sm text-sm"
                   ></textarea>
                 </div>
-                <a href="#" className="text-blue-600 font-medium">+ Add Image</a>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Image</label>
+                  <div className="flex items-center gap-2">
+                    <input ref={fileInputRef} type="file" accept="image/*" id="purchase-image-input" style={{ display: 'none' }} onChange={e => handleImageFile(e.target.files[0])} />
+                    <button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="text-blue-600">+ Add Image</button>
+                    {image && (
+                      <img src={image} alt="preview" style={{ height: 40 }} />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -543,17 +731,28 @@ const PurchaseBill = () => {
         {/* Bottom Action Bar */}
         <div className="flex justify-end items-center mt-6">
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50">
+            <button type="button" onClick={handleShare} className="px-5 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50">
               Share
             </button>
             {canCreate('purchases') && (
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className="px-8 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                {loading ? 'Saving...' : 'Save'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="px-5 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50"
+                >
+                  {loading ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAndReport}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : 'Save & Report'}
+                </button>
+              </>
             )}
           </div>
         </div>

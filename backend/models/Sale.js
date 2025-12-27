@@ -52,7 +52,11 @@ const saleSchema = new mongoose.Schema({
   
   invoiceDate: { type: Date, default: Date.now },
   dueDate: { type: Date },
-  
+  salesperson: { type: String, trim: true },
+  referencePO: { type: String, trim: true },
+  paymentTerms: { type: String, trim: true },
+  shippingMethod: { type: String, trim: true },
+
   notes: { type: String, trim: true }, // For "ADD DESCRIPTION"
   image: { type: String } // For "ADD IMAGE"
 }, {

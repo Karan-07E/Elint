@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { createItem, getItemById, updateItem, getAllItems, deleteItem } from "../services/api";
+import { createItem, getItemById, updateItem, getAllItems, deleteItem, completeItem } from "../services/api";
 import Sidebar from "../components/Sidebar";
 import { canCreate, canEdit, canDelete, canExportReports } from "../utils/permissions";
 
@@ -83,10 +83,31 @@ export default function ItemPage() {
   const [showProgress, setShowProgress] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [progressProcesses, setProgressProcesses] = useState([]);
+  
+  // New states for employee view steps
+  const [showStepsModal, setShowStepsModal] = useState(false);
+  const [viewingItem, setViewingItem] = useState(null);
+  const [checkedSteps, setCheckedSteps] = useState({});
+  const [employeeTracking, setEmployeeTracking] = useState(null);
+  const [itemCompletionStatus, setItemCompletionStatus] = useState({});
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [completingItem, setCompletingItem] = useState(false);
 
   // States for item name dropdown
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [itemNameSearch, setItemNameSearch] = useState("");
+  
+  // States for category dropdown
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+  
+  // States for unit dropdown
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+  const [unitSearch, setUnitSearch] = useState("");
+
+  // State for drag and drop
+  const [draggedSubStep, setDraggedSubStep] = useState(null);
+  const [draggedStep, setDraggedStep] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -105,6 +126,16 @@ export default function ItemPage() {
     }
   }, [form.name]);
 
+  // Sync categorySearch and unitSearch with form values
+  useEffect(() => {
+    if (form.category && !categorySearch) {
+      setCategorySearch(form.category);
+    }
+    if (form.unit && !unitSearch) {
+      setUnitSearch(form.unit);
+    }
+  }, [form.category, form.unit]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -119,8 +150,82 @@ export default function ItemPage() {
   const loadItems = async () => {
     setLoadingItems(true);
     try {
-      const response = await getAllItems();
-      setItems(response.data || []);
+      const userRole = getUserRole();
+      
+      if (userRole === 'employee') {
+        // For employees, fetch only assigned items from their orders
+        const ordersResponse = await fetch('http://localhost:5000/api/employees/my-orders', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const ordersData = await ordersResponse.json();
+        
+        // Fetch employee tracking data
+        const trackingResponse = await fetch('http://localhost:5000/api/employees/my-items', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const trackingData = await trackingResponse.json();
+        
+        // Build completion status map from Mappings data
+        const completionMap = {};
+        if (trackingData.items) {
+          trackingData.items.forEach(mapping => {
+            completionMap[mapping.itemId] = {
+              status: mapping.status,
+              completedAt: mapping.completedAt,
+              startedAt: mapping.startedAt,
+              progressPercentage: mapping.progressPercentage,
+              notes: mapping.notes
+            };
+          });
+        }
+        setItemCompletionStatus(completionMap);
+        
+        // Extract unique items from all orders
+        const assignedItemIds = new Set();
+        const assignedItems = [];
+        
+        // Also fetch full item details from my-items which includes processes
+        const itemDetailsMap = {};
+        if (trackingData.items) {
+          trackingData.items.forEach(mapping => {
+            if (mapping.itemId && mapping.item) {
+              itemDetailsMap[mapping.itemId] = mapping.item;
+            }
+          });
+        }
+        
+        (ordersData.orders || []).forEach(order => {
+          (order.items || []).forEach(orderItem => {
+            const itemId = orderItem.itemId;
+            if (itemId && !assignedItemIds.has(itemId)) {
+              assignedItemIds.add(itemId);
+              // Get full item details from tracking data (includes processes)
+              const fullItem = itemDetailsMap[itemId];
+              assignedItems.push({
+                _id: itemId,
+                code: orderItem.itemCode || fullItem?.code,
+                name: orderItem.itemName || fullItem?.name,
+                unit: orderItem.unit || fullItem?.unit,
+                processes: fullItem?.processes || [],
+                type: fullItem?.type,
+                category: fullItem?.category,
+                openingQty: fullItem?.openingQty || 0,
+                currentStock: fullItem?.currentStock || fullItem?.openingQty || 0
+              });
+            }
+          });
+        });
+        
+        setItems(assignedItems);
+      } else {
+        // For other roles, fetch all items
+        const response = await getAllItems();
+        setItems(response.data || []);
+      }
     } catch (err) {
       console.error("Failed to load items:", err);
       setError("Failed to load items");
@@ -173,6 +278,10 @@ export default function ItemPage() {
                 ? data.inspectionChecks
                 : f.inspectionChecks,
           }));
+          // Initialize search fields
+          setItemNameSearch(data.name || "");
+          setCategorySearch(data.category || "");
+          setUnitSearch(data.unit || "");
         })
         .catch((err) => {
           console.error("load item error", err);
@@ -497,6 +606,8 @@ export default function ItemPage() {
           : f.inspectionChecks,
     }));
     setItemNameSearch(selectedItem.name);
+    setCategorySearch(selectedItem.category || "");
+    setUnitSearch(selectedItem.unit || "");
     setShowItemDropdown(false);
   };
 
@@ -693,6 +804,93 @@ export default function ItemPage() {
     setProgressProcesses([]);
   };
 
+  const handleViewSteps = (item) => {
+    // Don't allow opening completed items
+    const completionData = itemCompletionStatus[item._id];
+    if (completionData?.status === 'completed') {
+      setMessage('This item has already been completed!');
+      setTimeout(() => setMessage(null), 2000);
+      return;
+    }
+    
+    setViewingItem(item);
+    setShowStepsModal(true);
+    setCurrentStepIndex(0); // Reset to first step
+    
+    // Load checked substeps from employee tracking
+    const initialCheckedSteps = {};
+    
+    if (completionData && completionData.steps) {
+      completionData.steps.forEach(step => {
+        if (step.status === 'completed') {
+          initialCheckedSteps[step.stepId] = true;
+        }
+        step.subSteps.forEach(subStep => {
+          if (subStep.status === 'completed') {
+            initialCheckedSteps[`${step.stepId}-${subStep.subStepId}`] = true;
+          }
+        });
+      });
+    }
+    
+    setCheckedSteps(initialCheckedSteps);
+  };
+
+  const handleStepCheckbox = async (stepId, subStepId) => {
+    const key = `${stepId}-${subStepId}`;
+    
+    // One-time tickable only - if already checked, don't allow unchecking
+    if (checkedSteps[key]) {
+      return;
+    }
+    
+    // Update UI immediately
+    const newCheckedSteps = { ...checkedSteps, [key]: true };
+    setCheckedSteps(newCheckedSteps);
+  };
+
+  const handleCompleteItem = async () => {
+    if (!viewingItem) return;
+    
+    try {
+      setCompletingItem(true);
+      const response = await completeItem(viewingItem._id);
+      
+      // Update item completion status
+      setItemCompletionStatus(prev => ({
+        ...prev,
+        [viewingItem._id]: {
+          ...prev[viewingItem._id],
+          status: 'completed',
+          completedAt: new Date().toISOString()
+        }
+      }));
+      
+      // Refresh items list
+      await loadItems();
+      
+      // Show different message based on whether order was completed
+      const successMessage = response.data.orderCompleted
+        ? '🎉 All items completed! Order marked as completed and moved to history.'
+        : '✅ Item completed successfully!';
+      
+      setMessage(successMessage);
+      
+      // Close modal and clear message
+      setTimeout(() => {
+        setShowStepsModal(false);
+        setViewingItem(null);
+        setCurrentStepIndex(0);
+        setMessage(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Error completing item:', error);
+      setError('Failed to mark item as completed: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setCompletingItem(false);
+    }
+  };
+
   // Get user role to determine which actions to show
   const getUserRole = () => {
     try {
@@ -712,7 +910,7 @@ export default function ItemPage() {
       {/* Top Header Bar */}
       <div className="ml-64 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-orange-500 text-xl font-bold">🔥 Elints</span>
+          <span className="text-black text-2xl font-bold">Items</span>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-gray-600">Customer Support:</span>
@@ -781,14 +979,18 @@ export default function ItemPage() {
                       <p className="text-sm text-gray-600">Unit</p>
                       <p className="text-sm font-medium text-gray-900">{selectedItem?.unit || '-'}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Sale Price</p>
-                      <p className="text-sm font-medium text-gray-900">₹{selectedItem?.salePrice || '0'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Purchase Price</p>
-                      <p className="text-sm font-medium text-gray-900">₹{selectedItem?.purchasePrice || '0'}</p>
-                    </div>
+                    {userRole !== 'employee' && (
+                      <>
+                        <div>
+                          <p className="text-sm text-gray-600">Sale Price</p>
+                          <p className="text-sm font-medium text-gray-900">₹{selectedItem?.salePrice || '0'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Purchase Price</p>
+                          <p className="text-sm font-medium text-gray-900">₹{selectedItem?.purchasePrice || '0'}</p>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <p className="text-sm text-gray-600">Stock</p>
                       <p className="text-sm font-medium text-gray-900">{selectedItem?.openingQty || '0'} {selectedItem?.unit || ''}</p>
@@ -954,7 +1156,7 @@ export default function ItemPage() {
                 ) : items.length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-gray-500 mb-4">No items found</p>
-                    {userRole !== 'product team' && (
+                    {userRole !== 'product team' && userRole !== 'employee' && (
                       <button
                         onClick={handleAddItem}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded text-sm font-medium transition-colors"
@@ -972,7 +1174,7 @@ export default function ItemPage() {
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Name</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Type</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Category</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Sale Price</th>
+                          {userRole !== 'employee' && <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Sale Price</th>}
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Stock</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Actions</th>
                         </tr>
@@ -997,38 +1199,51 @@ export default function ItemPage() {
                               </span>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600 capitalize">{item.category || '-'}</td>
-                            <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                              ₹{item.salePrice || '0'}
-                            </td>
+                            {userRole !== 'employee' && (
+                              <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                                ₹{item.salePrice || '0'}
+                              </td>
+                            )}
                             <td className="py-3 px-4 text-sm text-gray-600">{item.openingQty || '0'} {item.unit || ''}</td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
-                                {userRole === 'product team' ? (
+                                {userRole === 'employee' && (
+                                  itemCompletionStatus[item._id]?.status === 'completed' ? (
+                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                      ✓ Completed
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleViewSteps(item)}
+                                      className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                    >
+                                      View
+                                    </button>
+                                  )
+                                )}
+                                {userRole === 'product team' && (
                                   <button
                                     onClick={() => handleViewProgress(item)}
                                     className="text-white bg-green-500 hover:bg-green-600 text-sm font-medium p-2 rounded-lg"
                                   >
                                     View Progress
                                   </button>
-                                ) : (
-                                  <>
-                                    {canEdit('items') && (
-                                      <button
-                                        onClick={() => handleEditItem(item)}
-                                        className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
-                                      >
-                                        Edit
-                                      </button>
-                                    )}
-                                    {canDelete('items') && (
-                                      <button
-                                        onClick={() => handleDeleteItem(item._id)}
-                                        className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
-                                      >
-                                        Delete
-                                      </button>
-                                    )}
-                                  </>
+                                )}
+                                {canEdit('items') && (
+                                  <button
+                                    onClick={() => handleEditItem(item)}
+                                    className="text-white bg-blue-500 hover:bg-blue-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                {canDelete('items') && (
+                                  <button
+                                    onClick={() => handleDeleteItem(item._id)}
+                                    className="text-white bg-red-500 hover:bg-red-600 text-sm font-medium px-3 py-1 rounded-lg"
+                                  >
+                                    Delete
+                                  </button>
                                 )}
                               </div>
                             </td>
@@ -1061,8 +1276,20 @@ export default function ItemPage() {
             </div>
 
             <div className="px-6 py-6">
-              {/* Row 1: Item Name, HSN, Select Unit */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
+              {/* Row 1: Item Code, Item Name, HSN, Category */}
+              <div className="grid grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1.5">
+                    Item Code
+                  </label>
+                  <input
+                    value={form.code}
+                    onChange={(e) => updateField("code", e.target.value)}
+                    placeholder="Item Code"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
                 <div className="relative item-name-dropdown-container">
                   <label className="block text-sm text-gray-600 mb-1.5">
                     Item Name *
@@ -1129,36 +1356,106 @@ export default function ItemPage() {
                       className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder=""
                     />
-                    <button className="text-gray-400 hover:text-gray-600">
-                      🔍
-                    </button>
                   </div>
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="block text-sm text-gray-600 mb-1.5">
-                    Select Unit
+                    Category
                   </label>
-                  <select
-                    value={form.unit}
-                    onChange={(e) => updateField("unit", e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                  >
-                    <option value="">Select Unit</option>
-                    <option value="pieces">Pieces (pcs)</option>
-                    <option value="kg">Kilograms (kg)</option>
-                    <option value="grams">Grams (g)</option>
-                    <option value="liters">Liters (L)</option>
-                    <option value="meters">Meters (m)</option>
-                    <option value="boxes">Boxes</option>
-                    <option value="dozens">Dozens</option>
-                  </select>
+                  <div className="relative">
+                    <input
+                      value={categorySearch}
+                      onChange={(e) => {
+                        setCategorySearch(e.target.value);
+                        updateField("category", e.target.value);
+                        setShowCategoryDropdown(true);
+                      }}
+                      onFocus={() => setShowCategoryDropdown(true)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                      placeholder="Type or select category"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showCategoryDropdown ? '▲' : '▼'}
+                    </button>
+                    {showCategoryDropdown && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                        {['electronics', 'furniture', 'clothing', 'food', 'raw materials', 'tools', 'accessories', 'machinery']
+                          .filter(cat => cat.toLowerCase().includes(categorySearch.toLowerCase()))
+                          .map((category) => (
+                            <div
+                              key={category}
+                              onClick={() => {
+                                updateField("category", category);
+                                setCategorySearch(category);
+                                setShowCategoryDropdown(false);
+                              }}
+                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                            >
+                              {category.charAt(0).toUpperCase() + category.slice(1)}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Row 2: Add Item Image */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="flex items-end">
+              {/* Row 2: Select Unit, Add Item Image, Image Preview */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="relative">
+                  <label className="block text-sm text-gray-600 mb-1.5">
+                    Select Unit
+                  </label>
+                  <div className="relative">
+                    <input
+                      value={unitSearch}
+                      onChange={(e) => {
+                        setUnitSearch(e.target.value);
+                        updateField("unit", e.target.value);
+                        setShowUnitDropdown(true);
+                      }}
+                      onFocus={() => setShowUnitDropdown(true)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                      placeholder="Type or select unit"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUnitDropdown(!showUnitDropdown)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showUnitDropdown ? '▲' : '▼'}
+                    </button>
+                    {showUnitDropdown && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                        {['pieces', 'kg', 'grams', 'liters', 'meters', 'boxes', 'dozens', 'rolls', 'sheets', 'units']
+                          .filter(unit => unit.toLowerCase().includes(unitSearch.toLowerCase()))
+                          .map((unit) => (
+                            <div
+                              key={unit}
+                              onClick={() => {
+                                updateField("unit", unit);
+                                setUnitSearch(unit);
+                                setShowUnitDropdown(false);
+                              }}
+                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                            >
+                              {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1.5">
+                    Add Image
+                  </label>
                   <button
                     className="w-full bg-blue-100 text-blue-600 px-4 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2"
                     onClick={() =>
@@ -1174,43 +1471,6 @@ export default function ItemPage() {
                     className="hidden"
                     onChange={handleImageSelect}
                   />
-                </div>
-              </div>
-
-              {/* Row 3: Category, Item Code, Image Preview */}
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5">
-                    Category
-                  </label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => updateField("category", e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                  >
-                    <option value="">Select Category</option>
-                    <option value="electronics">Electronics</option>
-                    <option value="furniture">Furniture</option>
-                    <option value="clothing">Clothing</option>
-                    <option value="food">Food & Beverage</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5">
-                    Item Code
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      value={form.code}
-                      onChange={(e) => updateField("code", e.target.value)}
-                      placeholder="Item Code"
-                      className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <button className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 rounded text-sm font-medium transition-colors whitespace-nowrap">
-                      Assign Code
-                    </button>
-                  </div>
                 </div>
 
                 <div className="flex items-center justify-center">
@@ -1231,16 +1491,18 @@ export default function ItemPage() {
               {/* Tabs */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex gap-8 border-b border-gray-200 mb-6">
-                  <button
-                    onClick={() => setActiveTab("pricing")}
-                    className={`pb-3 text-sm font-medium transition-all ${
-                      activeTab === "pricing"
-                        ? "border-b-2 border-red-500 text-red-600"
-                        : "text-gray-600 hover:text-gray-800"
-                    }`}
-                  >
-                    Pricing
-                  </button>
+                  {userRole !== 'employee' && (
+                    <button
+                      onClick={() => setActiveTab("pricing")}
+                      className={`pb-3 text-sm font-medium transition-all ${
+                        activeTab === "pricing"
+                          ? "border-b-2 border-red-500 text-red-600"
+                          : "text-gray-600 hover:text-gray-800"
+                      }`}
+                    >
+                      Pricing
+                    </button>
+                  )}
                   <button
                     onClick={() => setActiveTab("stock")}
                     className={`pb-3 text-sm font-medium transition-all ${
@@ -1293,7 +1555,7 @@ export default function ItemPage() {
                   </button>
                 </div>
 
-                {activeTab === "pricing" && (
+                {activeTab === "pricing" && userRole !== 'employee' && (
                   <div>
                     {/* Sale Price Section */}
                     <div className="mb-6">
@@ -1377,17 +1639,35 @@ export default function ItemPage() {
                         <div className="space-y-2">
                           <select
                             value={form.taxRate}
-                            onChange={(e) =>
-                              updateField("taxRate", e.target.value)
-                            }
+                            onChange={(e) => {
+                              const selectedTax = e.target.value;
+                              updateField("taxRate", selectedTax);
+                              // Auto-change to 'with tax' if any tax other than 'None' is selected
+                              if (selectedTax !== 'None') {
+                                updateField("salePriceTaxType", "with");
+                                updateField("purchasePriceTaxType", "with");
+                              }
+                            }}
                             className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
                           >
                             <option>None</option>
-                            <option>GST @ 0%</option>
-                            <option>GST @ 5%</option>
-                            <option>GST @ 12%</option>
-                            <option>GST @ 18%</option>
-                            <option>GST @ 28%</option>
+                            <option>IGST@0%</option>
+                            <option>GST@0%</option>
+                            <option>IGST@ 0.25%</option>
+                            <option>GST@0.25%</option>
+                            <option>IGST@3%</option>
+                            <option>GST@3%</option>
+                            <option>IGST@5%</option>
+                            <option>GST@5%</option>
+                            <option>IGST@12%</option>
+                            <option>GST@12%</option>
+                            <option>IGST@18%</option>
+                            <option>GST@18%</option>
+                            <option>IGST@28%</option>
+                            <option>GST@28%</option>
+                            <option>Exempt</option>
+                            <option>IGST@40%</option>
+                            <option>GST@40%</option>
                           </select>
                         </div>
                       </div>
@@ -1413,19 +1693,21 @@ export default function ItemPage() {
                           className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1.5">
-                          At Price
-                        </label>
-                        <input
-                          value={form.atPrice}
-                          onChange={(e) =>
-                            updateField("atPrice", e.target.value)
-                          }
-                          placeholder="At Price"
-                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
+                      {userRole !== 'employee' && (
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1.5">
+                            At Price
+                          </label>
+                          <input
+                            value={form.atPrice}
+                            onChange={(e) =>
+                              updateField("atPrice", e.target.value)
+                            }
+                            placeholder="At Price"
+                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm text-gray-600 mb-1.5">
                           As Of Date
@@ -1489,10 +1771,50 @@ export default function ItemPage() {
                     {form.processes.map((process, index) => (
                       <div
                         key={process.id}
-                        className="mb-6 pb-6 border-b border-gray-200 last:border-b-0"
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggedStep(index);
+                          e.currentTarget.classList.add('opacity-50');
+                        }}
+                        onDragEnd={(e) => {
+                          e.currentTarget.classList.remove('opacity-50');
+                          setDraggedStep(null);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                          
+                          if (draggedStep !== null && draggedStep !== index) {
+                            const newProcesses = [...form.processes];
+                            const draggedItem = newProcesses[draggedStep];
+                            
+                            // Remove from old position
+                            newProcesses.splice(draggedStep, 1);
+                            // Insert at new position
+                            newProcesses.splice(index, 0, draggedItem);
+                            
+                            updateField("processes", newProcesses);
+                          }
+                        }}
+                        className="mb-6 pb-6 border-b border-gray-200 last:border-b-0 cursor-move transition-all"
                       >
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-4">
+                            {/* Drag Handle */}
+                            <div className="flex-shrink-0 text-gray-400 cursor-grab active:cursor-grabbing">
+                              <svg width="16" height="20" viewBox="0 0 16 16" fill="currentColor">
+                                <rect x="2" y="3" width="12" height="2" rx="1"/>
+                                <rect x="2" y="7" width="12" height="2" rx="1"/>
+                                <rect x="2" y="11" width="12" height="2" rx="1"/>
+                              </svg>
+                            </div>
                             <h4 className="text-sm font-medium text-gray-700">
                               Step {index + 1}
                             </h4>
@@ -1574,7 +1896,7 @@ export default function ItemPage() {
                                 updateField("processes", newProcesses);
                               }}
                               placeholder="e.g., Painting, Cutting, Assembly"
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full h-12 rows-{1} border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           </div>
 
@@ -1582,7 +1904,7 @@ export default function ItemPage() {
                             <label className="block text-sm text-gray-600 mb-1.5">
                               Description
                             </label>
-                            <input
+                            <textarea
                               value={process.description}
                               onChange={(e) => {
                                 const newProcesses = [...form.processes];
@@ -1591,7 +1913,7 @@ export default function ItemPage() {
                                 updateField("processes", newProcesses);
                               }}
                               placeholder="Brief description of this step"
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              className="w-full h-12 rows-{1} border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           </div>
                         </div>
@@ -1602,8 +1924,51 @@ export default function ItemPage() {
                           </label>
                           <div className="space-y-2">
                             {(process.subSteps || []).map((subStep, subIndex) => (
-                              <div key={subStep.id} className="flex gap-2 items-start bg-gray-50 p-3 rounded border border-gray-200">
-                                <div className="flex-1 space-y-2">
+                              <div 
+                                key={subStep.id} 
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggedSubStep({ processIndex: index, subStepIndex: subIndex });
+                                  e.currentTarget.classList.add('opacity-50');
+                                }}
+                                onDragEnd={(e) => {
+                                  e.currentTarget.classList.remove('opacity-50');
+                                  setDraggedSubStep(null);
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+                                }}
+                                onDragLeave={(e) => {
+                                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                                  
+                                  if (draggedSubStep && draggedSubStep.processIndex === index) {
+                                    const newProcesses = [...form.processes];
+                                    const subSteps = [...newProcesses[index].subSteps];
+                                    const draggedItem = subSteps[draggedSubStep.subStepIndex];
+                                    
+                                    // Remove from old position
+                                    subSteps.splice(draggedSubStep.subStepIndex, 1);
+                                    // Insert at new position
+                                    subSteps.splice(subIndex, 0, draggedItem);
+                                    
+                                    newProcesses[index].subSteps = subSteps;
+                                    updateField("processes", newProcesses);
+                                  }
+                                }}
+                                className="flex gap-2 items-start bg-gray-50 p-3 rounded border border-gray-200 cursor-move transition-all">
+                                <div className="flex-shrink-0 flex items-center pt-2 text-gray-400 cursor-grab active:cursor-grabbing">
+                                  <svg width="16" height="30" viewBox="0 0 16 16" fill="currentColor">
+                                    <rect x="2" y="3" width="12" height="2" rx="1"/>
+                                    <rect x="2" y="7" width="12" height="2" rx="1"/>
+                                    <rect x="2" y="11" width="12" height="2" rx="1"/>
+                                  </svg>
+                                </div>
+                                <div className="flex-1 grid grid-cols-2 gap-3">
                                   <input
                                     value={subStep.name}
                                     onChange={(e) => {
@@ -1612,9 +1977,9 @@ export default function ItemPage() {
                                       updateField("processes", newProcesses);
                                     }}
                                     placeholder="Sub-step name (e.g., Apply primer, Mix materials)"
-                                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full border border-gray-300 rounded px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   />
-                                  <input
+                                  <textarea
                                     value={subStep.description}
                                     onChange={(e) => {
                                       const newProcesses = [...form.processes];
@@ -1622,7 +1987,7 @@ export default function ItemPage() {
                                       updateField("processes", newProcesses);
                                     }}
                                     placeholder="Details (e.g., Amount: 2L, Color: Red, Temp: 200°C)"
-                                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full h-12 resize-none border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   />
                                 </div>
                                 <button
@@ -1785,16 +2150,18 @@ export default function ItemPage() {
                             <label className="block text-sm text-gray-600 mb-1.5">
                               Unit
                             </label>
-                            <select
+                            <input
+                              list={`unit-options-${index}`}
                               value={material.unit}
                               onChange={(e) => {
                                 const newMaterials = [...form.rawMaterials];
                                 newMaterials[index].unit = e.target.value;
                                 updateField("rawMaterials", newMaterials);
                               }}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                            >
-                              <option value="">Select Unit</option>
+                              placeholder="Type or select unit"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <datalist id={`unit-options-${index}`}>
                               <option value="kg">Kilograms (kg)</option>
                               <option value="grams">Grams (g)</option>
                               <option value="liters">Liters (L)</option>
@@ -1802,26 +2169,28 @@ export default function ItemPage() {
                               <option value="pieces">Pieces (pcs)</option>
                               <option value="boxes">Boxes</option>
                               <option value="rolls">Rolls</option>
-                            </select>
+                            </datalist>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-4 mb-3">
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-1.5">
-                              Cost Per Unit
-                            </label>
-                            <input
-                              value={material.costPerUnit}
-                              onChange={(e) => {
-                                const newMaterials = [...form.rawMaterials];
-                                newMaterials[index].costPerUnit = e.target.value;
-                                updateField("rawMaterials", newMaterials);
-                              }}
-                              placeholder="Cost Per Unit"
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                          </div>
+                        <div className={`grid gap-4 mb-3 ${userRole !== 'employee' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                          {userRole !== 'employee' && (
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1.5">
+                                Cost Per Unit
+                              </label>
+                              <input
+                                value={material.costPerUnit}
+                                onChange={(e) => {
+                                  const newMaterials = [...form.rawMaterials];
+                                  newMaterials[index].costPerUnit = e.target.value;
+                                  updateField("rawMaterials", newMaterials);
+                                }}
+                                placeholder="Cost Per Unit"
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                          )}
 
                           <div>
                             <label className="block text-sm text-gray-600 mb-1.5">
@@ -1905,7 +2274,7 @@ export default function ItemPage() {
                     </button>
                   </div>
                 )}
-
+                {/*inspection check*/}
                 {activeTab === "inspectionCheck" && (
                   <div>
                     <div className="mb-4">
@@ -2352,6 +2721,209 @@ export default function ItemPage() {
           )}
         </div>
       </div>
+
+      {/* Modal for Employee - View Manufacturing Steps */}
+      {showStepsModal && viewingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Manufacturing Steps</h2>
+                <p className="text-sm text-blue-100 mt-1">{viewingItem.name} ({viewingItem.code})</p>
+              </div>
+              <button
+                onClick={() => setShowStepsModal(false)}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {viewingItem.processes && viewingItem.processes.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Progress Indicator */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-blue-900">
+                        Step {currentStepIndex + 1} of {viewingItem.processes.length}
+                      </span>
+                      <div className="flex gap-1">
+                        {viewingItem.processes.map((_, idx) => (
+                          <div 
+                            key={idx}
+                            className={`w-8 h-1.5 rounded-full ${
+                              idx < currentStepIndex 
+                                ? 'bg-green-500' 
+                                : idx === currentStepIndex 
+                                ? 'bg-blue-600' 
+                                : 'bg-gray-300'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${((currentStepIndex + 1) / viewingItem.processes.length) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Current Step Only */}
+                  {(() => {
+                    const process = viewingItem.processes[currentStepIndex];
+                    if (!process) return null;
+                    
+                    // Check if all substeps are completed
+                    const allSubStepsCompleted = process.subSteps && process.subSteps.length > 0
+                      ? process.subSteps.every(subStep => checkedSteps[`${process.id}-${subStep.id}`])
+                      : true;
+                    
+                    return (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                        {/* Step Header */}
+                        <div className="bg-blue-50 px-4 py-3 border-b border-blue-100">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white font-bold text-lg">
+                              {currentStepIndex + 1}
+                            </span>
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-gray-900 text-lg">{process.stepName}</h3>
+                              {process.description && (
+                                <p className="text-sm text-gray-600 mt-1">{process.description}</p>
+                              )}
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              process.stepType === 'testing' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {process.stepType === 'testing' ? '🧪 Testing' : '⚙️ Execution'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Sub-steps */}
+                        {process.subSteps && process.subSteps.length > 0 ? (
+                          <div className="p-6 bg-gray-50">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-4">Sub-steps to complete:</h4>
+                            <div className="space-y-3">
+                              {process.subSteps.map((subStep) => {
+                                const isChecked = checkedSteps[`${process.id}-${subStep.id}`];
+                                return (
+                                  <div key={subStep.id} className="flex items-start gap-3 bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked || false}
+                                      onChange={() => handleStepCheckbox(process.id, subStep.id)}
+                                      disabled={isChecked}
+                                      className={`h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5 ${
+                                        isChecked ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
+                                      }`}
+                                    />
+                                    <div className="flex-1">
+                                      <div className={`text-sm font-medium ${isChecked ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                                        {subStep.name}
+                                      </div>
+                                      {subStep.description && (
+                                        <div className="text-xs text-gray-500 mt-1">{subStep.description}</div>
+                                      )}
+                                    </div>
+                                    {isChecked && (
+                                      <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            
+                            {/* Next Button - Only show when all substeps are completed */}
+                            {allSubStepsCompleted && currentStepIndex < viewingItem.processes.length - 1 && (
+                              <div className="mt-6 flex justify-end">
+                                <button
+                                  onClick={() => setCurrentStepIndex(currentStepIndex + 1)}
+                                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+                                >
+                                  Next Step
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                            
+                            {/* Complete Item Button */}
+                            {allSubStepsCompleted && currentStepIndex === viewingItem.processes.length - 1 && (
+                              <div className="mt-6 flex justify-center">
+                                <button
+                                  onClick={() => handleCompleteItem(viewingItem._id)}
+                                  disabled={completingItem}
+                                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-8 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
+                                >
+                                  {completingItem ? (
+                                    <>
+                                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      Completing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                      Complete Item
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="p-6 bg-gray-50 text-center text-gray-500">
+                            No sub-steps defined for this step.
+                            {currentStepIndex < viewingItem.processes.length - 1 && (
+                              <button
+                                onClick={() => setCurrentStepIndex(currentStepIndex + 1)}
+                                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                              >
+                                Next Step →
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <p className="text-lg">No manufacturing steps defined for this item.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 px-6 py-4 flex justify-end border-t border-gray-200">
+              <button
+                onClick={() => setShowStepsModal(false)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

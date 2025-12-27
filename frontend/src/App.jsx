@@ -4,9 +4,12 @@ import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
 import ItemPage from "./pages/item.jsx";
 import SaleInvoice from "./pages/SaleInvoice.jsx";
+import SaleReport from "./pages/SaleReport.jsx";
 import Purchase from "./pages/Purchase.jsx";
 import PurchaseBill from "./pages/PurchaseBill.jsx";
+import PurchaseReport from "./pages/PurchaseReport.jsx";
 import PartiesPage from "./pages/Parties.jsx";
+import PartiesFollowUps from "./pages/PartiesFollowUps.jsx";
 import Settings from "./pages/Settings.jsx";
 import OrderDashboard from "./pages/OrderDashboard.jsx";
 import CreateOrder from "./pages/CreateOrder.jsx";
@@ -15,11 +18,18 @@ import OrderCalendar from "./pages/OrderCalendar.jsx";
 import AccountsTeamManage from "./pages/AccountsTeamManage.jsx";
 import ManageOrders from "./pages/ManageOrders.jsx";
 import AccountsReport from "./pages/AccountsReport.jsx";
-import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
+import EmployeeDashboard from "./pages/EmployeeOrders.jsx";
+import EmployeeProgress from "./pages/EmployeeProgress.jsx";
+import AccountsDashboard from "./pages/AccountsDashboard.jsx";
+// import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import AccessDenied from "./pages/AccessDenied.jsx";
+import Inventory from "./pages/Inventory.jsx";
+import Reports from "./pages/Reports.jsx";
+import ReportView from "./pages/ReportView.jsx";
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isAuthChecked, setIsAuthChecked] = useState(false);
 
     // Helper function to get user role
     const getUserRole = () => {
@@ -42,6 +52,7 @@ function App() {
     useEffect(() => {
         const checkAuth = () => {
             setIsAuthenticated(!!localStorage.getItem("token"));
+            setIsAuthChecked(true);
         };
 
         // Check on initial load
@@ -58,6 +69,11 @@ function App() {
             window.removeEventListener('authChange', checkAuth);
         };
     }, []);
+
+    // Show nothing while checking authentication to prevent redirects
+    if (!isAuthChecked) {
+        return null;
+    }
 
     return (
         <Router>
@@ -101,6 +117,22 @@ function App() {
                     path="/parties"
                     element={
                         isAuthenticated ? <PartiesPage /> : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Parties Page Alias (Accounts) */}
+                <Route
+                    path="/accounts/parties"
+                    element={
+                        isAuthenticated ? <PartiesPage /> : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Parties Follow Ups Page */}
+                <Route
+                    path="/accounts/parties/follow-ups"
+                    element={
+                        isAuthenticated ? <PartiesFollowUps /> : <Navigate to="/login" replace />
                     }
                 />
 
@@ -176,10 +208,12 @@ function App() {
                     element={isAuthenticated ? <AccountsReport /> : <Navigate to="/login" />}
                 />
 
-                {/* 6. Inventory -> ItemPage Alias */}
+
+
+                {/* 6. Inventory -> Dedicated Component */}
                 <Route
                     path="/accounts/inventory"
-                    element={isAuthenticated ? <ItemPage /> : <Navigate to="/login" />}
+                    element={isAuthenticated ? <Inventory /> : <Navigate to="/login" />}
                 />
 
                 {/* Manage Teams Page (Admin) */}
@@ -192,7 +226,7 @@ function App() {
 
                 {/* Accounts Team - Manage Teams */}
                 <Route
-                    path="/accounts/manage-teams"
+                    path="/orders/teams"
                     element={
                         isAuthenticated && getUserRole() === 'accounts team'
                             ? <AccountsTeamManage />
@@ -204,10 +238,22 @@ function App() {
 
                 {/* Accounts Team - Manage Orders */}
                 <Route
-                    path="/accounts/manage-orders"
+                    path="/orders/manage"
                     element={
-                        isAuthenticated && (getUserRole() === 'accounts team' || getUserRole() === 'accounts employee')
+                        isAuthenticated && getUserRole() === 'accounts team'
                             ? <ManageOrders />
+                            : isAuthenticated
+                                ? <AccessDenied />
+                                : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Accounts Dashboard - NEW */}
+                <Route
+                    path="/accounts/dashboard"
+                    element={
+                        isAuthenticated && (getUserRole() === 'accounts team' || getUserRole() === 'admin')
+                            ? <AccountsDashboard />
                             : isAuthenticated
                                 ? <AccessDenied />
                                 : <Navigate to="/login" replace />
@@ -242,6 +288,18 @@ function App() {
                     element={isAuthenticated ? <CreateOrder /> : <Navigate to="/login" />}
                 />
 
+                {/* Sale Report */}
+                <Route
+                    path="/sales/report/:id"
+                    element={isAuthenticated ? <SaleReport /> : <Navigate to="/login" />}
+                />
+
+                {/* Purchase Report */}
+                <Route
+                    path="/purchases/report/:id"
+                    element={isAuthenticated ? <PurchaseReport /> : <Navigate to="/login" />}
+                />
+
                 {/* Employee Dashboard */}
                 <Route
                     path="/employee/dashboard"
@@ -250,8 +308,38 @@ function App() {
                     }
                 />
 
+                {/* Employee Progress */}
+                <Route
+                    path="/employee/progress"
+                    element={
+                        isAuthenticated && getUserRole() === 'employee'
+                            ? <EmployeeProgress />
+                            : isAuthenticated
+                                ? <AccessDenied />
+                                : <Navigate to="/login" replace />
+                    }
+                />
+
+                {/* Reports */}
+                <Route
+                    path="/reports"
+                    element={isAuthenticated ? <Reports /> : <Navigate to="/login" />}
+                />
+
+                {/* Report View */}
+                <Route
+                    path="/reports/:id"
+                    element={isAuthenticated ? <ReportView /> : <Navigate to="/login" />}
+                />
+
                 {/* Fallback Route */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={
+                    isAuthenticated ? (
+                        <Navigate to={getDefaultRoute()} replace />
+                    ) : (
+                        <Navigate to="/login" replace />
+                    )
+                } />
 
             </Routes>
         </Router>

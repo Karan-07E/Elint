@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import ReportGenerator from '../components/ReportGenerator';
 import { getOrderFlowStats, getOrderTree, updateOrderStatus } from '../services/api';
-import { FaChevronRight, FaChevronDown, FaBoxOpen, FaCheckCircle, FaIndustry, FaFileAlt, FaTruck, FaPlus, FaTimes, FaStickyNote, FaHistory } from 'react-icons/fa';
+import { FaChevronRight, FaChevronDown, FaBoxOpen, FaCheckCircle, FaIndustry, FaFileAlt, FaTruck, FaPlus, FaTimes, FaStickyNote, FaHistory, FaFileInvoice } from 'react-icons/fa';
 import { MdVerified } from 'react-icons/md';
+import { canCreate } from '../utils/permissions';
 
 const OrderDashboard = () => {
   const navigate = useNavigate();
@@ -15,7 +17,11 @@ const OrderDashboard = () => {
   const [selectedStage, setSelectedStage] = useState(null);
   
   // ✅ NEW: State to toggle note history view
-  const [expandedNotes, setExpandedNotes] = useState({}); 
+  const [expandedNotes, setExpandedNotes] = useState({});
+  
+  // Report Generator States
+  const [showReportGenerator, setShowReportGenerator] = useState(false);
+  const [selectedOrderForReport, setSelectedOrderForReport] = useState(null); 
 
   const flowStages = [
     { key: 'New', label: 'New Orders', icon: <FaBoxOpen />, color: 'bg-blue-100 text-blue-600', border: 'border-blue-200' },
@@ -53,6 +59,24 @@ const OrderDashboard = () => {
     setExpandedCustomers(prev => ({ ...prev, [customerId]: !prev[customerId] }));
   };
 
+
+  // Handle opening report generator
+  const handleGenerateReport = (order) => {
+    setSelectedOrderForReport(order);
+    setShowReportGenerator(true);
+  };
+
+  // Handle closing report generator
+  const handleCloseReportGenerator = () => {
+    setShowReportGenerator(false);
+    setSelectedOrderForReport(null);
+  };
+
+  // Handle report saved
+  const handleReportSaved = (report) => {
+    console.log('Report saved:', report);
+    // Optionally refresh data or show notification
+  };
   // ✅ Toggle Visibility of Notes for specific order
   const toggleNotes = (orderId) => {
     setExpandedNotes(prev => ({ ...prev, [orderId]: !prev[orderId] }));
@@ -88,12 +112,14 @@ const OrderDashboard = () => {
         
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-slate-800">Order Management</h1>
-          <button 
-            onClick={() => navigate('/orders/new')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
-          >
-            <FaPlus /> Create New Order
-          </button>
+          {canCreate('orders') && (
+            <button 
+              onClick={() => navigate('/orders/new')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
+            >
+              <FaPlus /> Create New Order
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-6 gap-4 mb-8">
@@ -191,23 +217,28 @@ const OrderDashboard = () => {
                               
                               {/* STATUS DROPDOWN */}
                               <div className="relative">
-                                <select
-                                  value={order.status}
-                                  onChange={(e) => handleStatusChange(order._id, e.target.value)}
-                                  className={`
-                                    text-xs font-medium px-2 py-1 rounded border cursor-pointer outline-none appearance-none pr-6
-                                    ${order.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                                      order.status === 'Verified' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 
-                                      order.status === 'Manufacturing' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                      order.status === 'Dispatch' ? 'bg-green-50 text-green-700 border-green-200' :
-                                      'bg-gray-100 text-gray-600 border-gray-200'
-                                    }
-                                  `}
-                                >
-                                  {statusOptions.map(status => (
-                                    <option key={status} value={status}>{status.replace('_', ' ')}</option>
-                                  ))}
-                                </select>
+                                {/* Show current status (disabled) and only the immediate next status as selectable */}
+                                {(() => {
+                                  const cur = order.status;
+                                  const idx = statusOptions.indexOf(cur);
+                                  const next = (idx >= 0 && idx < statusOptions.length - 2) ? statusOptions[idx + 1] : null; // don't advance past Completed
+                                  const bgClass = cur === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    cur === 'Verified' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                    cur === 'Manufacturing' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                    cur === 'Dispatch' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    'bg-gray-100 text-gray-600 border-gray-200';
+
+                                  return (
+                                    <select
+                                      value={cur}
+                                      onChange={(e) => handleStatusChange(order._id, e.target.value)}
+                                      className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer outline-none appearance-none pr-6 ${bgClass}`}
+                                    >
+                                      <option value={cur} disabled>{cur.replace('_', ' ')}</option>
+                                      {next && <option value={next}>{next.replace('_', ' ')}</option>}
+                                    </select>
+                                  );
+                                })()}
                                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none text-xs opacity-50">▼</div>
                               </div>
 
@@ -220,7 +251,19 @@ const OrderDashboard = () => {
                                 <FaStickyNote /> Notes
                               </button>
 
-                              {order.priority === 'High' && (
+                              {/* ✅ GENERATE REPORT BUTTON - Only show in Documentation stage */}
+                              {order.status === 'Documentation' && (
+                                <button 
+                                  onClick={() => handleGenerateReport(order)}
+                                  className="text-xs flex items-center gap-1 px-2 py-1 rounded border bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 transition-colors"
+                                  title="Generate Report"
+                                >
+                                  <FaFileInvoice /> Generate
+                                </button>
+                              )}
+
+                              {/* Show a high-priority badge if any item in the order is High priority */}
+                              {(order.items || []).some(it => it.priority === 'High') && (
                                 <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded flex items-center gap-1 animate-pulse">
                                   🔥 High Priority
                                 </span>
@@ -291,6 +334,15 @@ const OrderDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Report Generator Modal */}
+      {showReportGenerator && selectedOrderForReport && (
+        <ReportGenerator
+          order={selectedOrderForReport}
+          onClose={handleCloseReportGenerator}
+          onSave={handleReportSaved}
+        />
+      )}
     </div>
   );
 };

@@ -17,8 +17,7 @@ import {
   LuChevronRight,
   LuChevronDown,
   LuUsers,
-  LuCalendarDays,
-  LuHexagon // Professional Logo Icon
+  LuCalendarDays
 } from "react-icons/lu";
 import { hasPermission } from '../utils/permissions';
 
@@ -29,6 +28,8 @@ const Sidebar = () => {
   // --- Deterministic Sidebar State ---
   const [explicitAccountsOpen, setExplicitAccountsOpen] = useState(null);
   const [isPurchaseOpen, setIsPurchaseOpen] = useState(false);
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isPartiesOpen, setIsPartiesOpen] = useState(false);
 
   // Derived: Is the user currently inside the Accounts section?
   const isAccountsRoute = location.pathname.startsWith('/accounts') || 
@@ -54,6 +55,8 @@ const Sidebar = () => {
 
   React.useEffect(() => {
     if (location.pathname.startsWith('/purchase')) setIsPurchaseOpen(true);
+    if (location.pathname.startsWith('/orders')) setIsOrdersOpen(true);
+    if (location.pathname.startsWith('/parties') || location.pathname.startsWith('/accounts/parties')) setIsPartiesOpen(true);
   }, [location.pathname]);
 
   const handleLogout = async () => {
@@ -105,7 +108,7 @@ const Sidebar = () => {
       path: '/items', 
       icon: <LuBox size={20} />, 
       label: 'Items', 
-      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'], 
+      roles: ['user', 'admin', 'accounts team', 'employee', 'product team'], 
       permission: 'viewItems' 
     },
 
@@ -123,7 +126,7 @@ const Sidebar = () => {
       path: null, 
       icon: <LuLandmark size={20} />, 
       label: 'Accounts', 
-      roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+      roles: ['user', 'admin', 'accounts team'],
       permission: null, 
       isDropdown: true,
       stateKey: 'accounts',
@@ -133,15 +136,41 @@ const Sidebar = () => {
           path: '/sale/new', 
           icon: <LuTrendingUp size={18} />, 
           label: 'Sales', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewSales' 
         },
         // Parties
+        {
+          path: '/accounts/parties',
+          icon: <LuUsers size={18} />,
+          label: 'Parties',
+          roles: ['user', 'admin', 'accounts team'],
+          permission: 'viewParties',
+          isNestedDropdown: true,
+          stateKey: 'parties',
+          subItems: [
+            {
+              path: '/accounts/parties',
+              icon: <LuUsers size={18} />,
+              label: 'Parties List',
+              roles: ['user', 'admin', 'accounts team'],
+              permission: 'viewParties'
+            },
+            {
+              path: '/accounts/parties/follow-ups',
+              icon: <LuClipboardList size={18} />,
+              label: 'Parties Follow Ups',
+              roles: ['user', 'admin', 'accounts team'],
+              permission: 'viewParties'
+            }
+          ]
+        },
+        // Purchases
         { 
           path: '/parties', 
           icon: <LuUsers size={18} />, 
           label: 'Parties', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewParties' 
         },
         
@@ -150,40 +179,40 @@ const Sidebar = () => {
           path: null, 
           icon: <LuShoppingCart size={18} />, 
           label: 'Purchases', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'],
+          roles: ['user', 'admin', 'accounts team'],
           permission: 'viewPurchases',
           isNestedDropdown: true,
           stateKey: 'purchase',
           subItems: [
-            { path: '/purchase', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
-            { path: '/purchase/new', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team', 'accounts employee'], permission: 'viewPurchases' },
+            { path: '/purchase', icon: <LuChartPie size={16} />, label: 'Purchase Dashboard', roles: ['user', 'admin', 'accounts team'], permission: 'viewPurchases' },
+            { path: '/purchase/new', icon: <LuReceipt size={16} />, label: 'Purchase Bills', roles: ['user', 'admin', 'accounts team'], permission: 'viewPurchases' },
           ]
         },
 
         // Accounts Report
         { 
-          path: '/reports', 
+          path: '/accounts/report', 
           icon: <LuFileChartColumn size={18} />, 
           label: 'Reports', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewReports' 
         },
 
         // Manage Orders (For Accounts)
         {
-          path: '/accounts/manage-orders',
+          path: '/orders/manage',
           icon: <LuClipboardList size={18} />,
           label: 'Manage Orders',
-          roles: ['accounts team', 'accounts employee'],
+          roles: ['accounts team'],
           permission: null
         },
 
         // Inventory
         { 
-          path: '/items', // Reusing items path
+          path: '/accounts/inventory',
           icon: <LuWarehouse size={18} />, 
           label: 'Inventory', 
-          roles: ['user', 'admin', 'accounts team', 'accounts employee'], 
+          roles: ['user', 'admin', 'accounts team'], 
           permission: 'viewItems' 
         },
       ]
@@ -194,8 +223,17 @@ const Sidebar = () => {
       path: '/orders', 
       icon: <LuClipboardList size={20} />, 
       label: 'Orders', 
-      roles: ['user', 'admin', 'product team', 'product employee', 'accounts team', 'accounts employee'], 
-      permission: null 
+      roles: ['user', 'admin', 'product team', 'accounts team'], 
+      permission: 'viewOrders' 
+    },
+
+    // 4.5. Reports
+    {
+      path: '/reports',
+      icon: <LuFileChartColumn size={20} />,
+      label: 'Reports',
+      roles: ['user', 'admin', 'accounts team'],
+      permission: null
     },
 
     // 5. Order Calendar
@@ -203,7 +241,16 @@ const Sidebar = () => {
       path: '/calendar',
       icon: <LuCalendarDays size={20} />,
       label: 'Calendar',
-      roles: ['user', 'admin', 'accounts team', 'accounts employee', 'product team', 'product employee'],
+      roles: ['user', 'admin', 'accounts team', 'employee', 'product team'],
+      permission: null
+    },
+
+    // 5.5. Progress (Employee Only)
+    {
+      path: '/employee/progress',
+      icon: <LuChartPie size={20} />,
+      label: 'Progress',
+      roles: ['employee'],
       permission: null
     },
 
@@ -212,7 +259,7 @@ const Sidebar = () => {
       path: '/settings', 
       icon: <LuSettings size={20} />,
       label: 'Settings', 
-      roles: ['user', 'admin', 'accounts team', 'product team'], 
+      roles: ['user', 'admin', 'accounts team', 'product team', 'employee'], 
       permission: 'viewSettings' 
     },
 
@@ -261,10 +308,15 @@ const Sidebar = () => {
       {/* Header */}
       <div className="p-5 border-b border-slate-800 bg-slate-900">
         <div className="flex items-center gap-3 mb-5 px-1">
-          {/* Logo Placeholder */}
-          <div className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500 via-blue-600 to-slate-800 border border-white/10 relative overflow-hidden group">
+          {/* Logo Image */}
+          <div className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center border border-white/10 relative overflow-hidden group bg-slate-800">
             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            <LuHexagon className="text-white w-6 h-6 drop-shadow-md" strokeWidth={2.5} />
+            <img
+              src={process.env.PUBLIC_URL + '/elintslogo.png'}
+              alt="Elints"
+              className="w-9 h-9 object-contain rounded-md relative z-10"
+              onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = process.env.PUBLIC_URL + '/logo192.png'; }}
+            />
           </div>
           <span className="text-lg font-bold text-white tracking-tight">Elints ERP</span>
         </div>
@@ -293,10 +345,22 @@ const Sidebar = () => {
                   return false;
                 });
               };
-              
+
+              const isOpen = item.stateKey === 'orders' ? isOrdersOpen : item.stateKey === 'parties' ? isPartiesOpen : isAccountsOpen;
+              // Check if parent itself matches current path
+              const isParentActive = item.path === location.pathname;
               const isAnySubItemActive = checkActive(item.subItems);
-              const isOpen = isAccountsOpen; 
-              
+
+              const toggle = (e) => {
+                if (e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+                if (item.stateKey === 'orders') setIsOrdersOpen(!isOrdersOpen);
+                else if (item.stateKey === 'parties') setIsPartiesOpen(!isPartiesOpen);
+                else handleAccountsHeaderClick();
+              };
+
               return (
                 <li key={`dropdown-${index}`}>
                   <div
@@ -323,29 +387,54 @@ const Sidebar = () => {
                     <ul className="space-y-1 pl-3 border-l-2 border-slate-800 ml-5">
                       {item.subItems.map((subItem, subIndex) => {
                         if (subItem.isNestedDropdown) {
-                          // Nested Dropdown (Purchases)
-                          const isNestedOpen = isPurchaseOpen;
+                          // Nested Dropdown (Parties & Purchases)
+                          const isNestedOpen = subItem.stateKey === 'parties' ? isPartiesOpen : isPurchaseOpen;
                           const isAnyNestedActive = subItem.subItems.some(nested => location.pathname === nested.path);
-                          
+                          const isParentActive = subItem.path === location.pathname;
+
+                          const toggleNested = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (subItem.stateKey === 'parties') setIsPartiesOpen(!isPartiesOpen);
+                            else setIsPurchaseOpen(!isPurchaseOpen);
+                          };
+
                           return (
                             <li key={`nested-${subIndex}`}>
                               <div
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsPurchaseOpen(!isPurchaseOpen);
-                                }}
                                 className={`
-                                  flex items-center justify-between py-2 px-3 rounded-md cursor-pointer transition-colors text-sm group/nested
-                                  ${isAnyNestedActive ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}
+                                  flex items-center justify-between py-2 px-3 rounded-md transition-colors text-sm group/nested relative
+                                  ${isAnyNestedActive || isParentActive ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}
                                 `}
                               >
-                                <div className="flex items-center gap-3">
-                                  <span className={isAnyNestedActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
-                                    {subItem.icon}
-                                  </span>
-                                  <span>{subItem.label}</span>
+                                {subItem.path ? (
+                                  <Link
+                                    to={subItem.path}
+                                    className="flex-1 flex items-center gap-3 cursor-pointer"
+                                  >
+                                    <span className={isAnyNestedActive || isParentActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
+                                      {subItem.icon}
+                                    </span>
+                                    <span>{subItem.label}</span>
+                                  </Link>
+                                ) : (
+                                  <div
+                                    onClick={toggleNested}
+                                    className="flex-1 flex items-center gap-3 cursor-pointer"
+                                  >
+                                    <span className={isAnyNestedActive || isParentActive ? 'text-blue-500' : 'text-slate-600 group-hover/nested:text-blue-400'}>
+                                      {subItem.icon}
+                                    </span>
+                                    <span>{subItem.label}</span>
+                                  </div>
+                                )}
+
+                                <div
+                                  onClick={toggleNested}
+                                  className="p-1 hover:bg-white/10 rounded cursor-pointer ml-2"
+                                >
+                                  <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
                                 </div>
-                                <LuChevronDown size={12} className={`transition-transform ${isNestedOpen ? 'rotate-180' : ''}`} />
                               </div>
                               
                               {/* Nested Content */}

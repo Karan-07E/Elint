@@ -11,6 +11,9 @@ const Settings = () => {
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
   
+  // Check if user can edit settings
+  const canEditSettings = canEdit('settings');
+  
   const [userData, setUserData] = useState({
     name: '',
     email: '',
@@ -269,30 +272,38 @@ const Settings = () => {
                         </div>
                       )}
                       <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded text-sm font-medium transition-colors"
-                        >
-                          Upload Photo
-                        </button>
-                        {userData.profilePhoto && (
-                          <button
-                            onClick={handleRemovePhoto}
-                            className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded text-sm font-medium transition-colors"
-                          >
-                            Remove Photo
-                          </button>
+                        {canEditSettings ? (
+                          <>
+                            <button
+                              onClick={() => fileInputRef.current?.click()}
+                              className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded text-sm font-medium transition-colors"
+                            >
+                              Upload Photo
+                            </button>
+                            {userData.profilePhoto && (
+                              <button
+                                onClick={handleRemovePhoto}
+                                className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded text-sm font-medium transition-colors"
+                              >
+                                Remove Photo
+                              </button>
+                            )}
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleImageSelect}
+                            />
+                            <p className="text-xs text-gray-500">
+                              JPG, PNG or GIF. Max size 5MB
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            View only - contact admin to edit
+                          </p>
                         )}
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleImageSelect}
-                        />
-                        <p className="text-xs text-gray-500">
-                          JPG, PNG or GIF. Max size 5MB
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -307,7 +318,11 @@ const Settings = () => {
                       name="name"
                       value={userData.name}
                       onChange={handleProfileChange}
-                      className="w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      readOnly={!canEditSettings}
+                      disabled={!canEditSettings}
+                      className={`w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        !canEditSettings ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''
+                      }`}
                       placeholder="Enter your name"
                     />
                   </div>
@@ -322,7 +337,11 @@ const Settings = () => {
                       name="email"
                       value={userData.email}
                       onChange={handleProfileChange}
-                      className="w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      readOnly={!canEditSettings}
+                      disabled={!canEditSettings}
+                      className={`w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        !canEditSettings ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''
+                      }`}
                       placeholder="Enter your email"
                     />
                   </div>
@@ -343,7 +362,7 @@ const Settings = () => {
                   </div>
 
                   {/* Save Button */}
-                  {canEdit('settings') && (
+                  {canEditSettings && (
                     <div className="pt-4 border-t border-gray-200">
                       <button
                         onClick={handleSaveProfile}
@@ -358,47 +377,57 @@ const Settings = () => {
               ) : (
                 // Change Password Tab
                 <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      New Password *
-                    </label>
-                    <input
-                      type="password"
-                      name="newPassword"
-                      value={passwordData.newPassword}
-                      onChange={handlePasswordChange}
-                      className="w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Enter new password"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Must be at least 6 characters
-                    </p>
-                  </div>
+                  {canEditSettings ? (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          New Password *
+                        </label>
+                        <input
+                          type="password"
+                          name="newPassword"
+                          value={passwordData.newPassword}
+                          onChange={handlePasswordChange}
+                          className="w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Enter new password"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Must be at least 6 characters
+                        </p>
+                      </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Confirm New Password *
-                    </label>
-                    <input
-                      type="password"
-                      name="confirmPassword"
-                      value={passwordData.confirmPassword}
-                      onChange={handlePasswordChange}
-                      className="w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Confirm new password"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Confirm New Password *
+                        </label>
+                        <input
+                          type="password"
+                          name="confirmPassword"
+                          value={passwordData.confirmPassword}
+                          onChange={handlePasswordChange}
+                          className="w-full border border-gray-300 rounded px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Confirm new password"
+                        />
+                      </div>
 
-                  {/* Change Password Button */}
-                  <div className="pt-4 border-t border-gray-200">
-                    <button
-                      onClick={handleChangePassword}
-                      disabled={loading}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Changing...' : 'Change Password'}
-                    </button>
-                  </div>
+                      {/* Change Password Button */}
+                      <div className="pt-4 border-t border-gray-200">
+                        <button
+                          onClick={handleChangePassword}
+                          disabled={loading}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {loading ? 'Changing...' : 'Change Password'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+                      <p className="text-sm text-yellow-800">
+                        <span className="font-semibold">View Only Mode:</span> You do not have permission to change your password. Please contact your administrator to edit settings.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
