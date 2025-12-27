@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "description": "Full-stack Vyapar clone with React and Node.js",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "cd backend && npm start",
     "server": "cd backend && npm start",
     "client": "cd frontend && npm start",
     "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm start\"",
+    "build": "cd frontend && npm install && npm run build && cp -r build/* ../backend/public/",
     "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "seed": "cd backend && node seed/seedPartiesAndOrders.js"
   },
