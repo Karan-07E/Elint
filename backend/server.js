@@ -4,6 +4,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dns = require('dns').promises;
+const path = require('path');
 
 const app = express();
 
@@ -82,7 +83,8 @@ async function connectWithMongoose(uri) {
       useUnifiedTopology: true
     });
     console.log('✅ MongoDB Connected');
-    // start server only after successful DB connection
+    
+    // Start server only after successful DB connection
     const PORT = process.env.PORT || 5001;
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   } catch (err) {
@@ -92,7 +94,7 @@ async function connectWithMongoose(uri) {
   }
 }
 
-// Routes (keep these as-is)
+// API Routes
 const authRoutes = require('./routes/authRoutes');
 const itemRoutes = require('./routes/itemRoutes');
 const partyRoutes = require('./routes/partyRoutes');
@@ -120,6 +122,19 @@ app.use('/api/mappings', require('./routes/mappingRoutes'));
 app.use('/api/export', exportRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/reports', reportRoutes);
+
+if (process.env.NODE_ENV === 'production' || true) { // Force true for cPanel
+  // Set static folder
+  app.use(express.static('public'));
+
+  // Any route that is NOT /api... goes to index.html
+  app.get('*', (req, res) => {
+    // Exclude API routes explicitly just in case
+    if (req.url.startsWith('/api')) return res.status(404).send("API Not Found");
+    
+    res.sendFile(path.resolve(__dirname, 'public', 'index.html'));
+  });
+}
 
 // Kick off connection + server start
 checkAndConnect();
